@@ -9,7 +9,9 @@ import {
   Filter, Eye, RefreshCw, ChevronDown, Package,
   Ruler, Users, ThumbsUp, Layers, Mail, Lock,
   Clock, Inbox, Store, Shirt, ArrowUpRight,
+  Sun, Moon, Monitor,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import {
   AreaChart, Area, XAxis, YAxis, ResponsiveContainer,
   Tooltip, BarChart, Bar,
@@ -112,8 +114,51 @@ function StarRating({ rating, size = 10 }: { rating: number; size?: number }) {
     <div className="flex items-center gap-0.5">
       {[1, 2, 3, 4, 5].map((i) => (
         <Star key={i} size={size}
-          className={i <= Math.round(rating) ? "fill-amber-400 text-amber-600 dark:text-amber-400" : "text-muted-foreground/30"} />
+          className={i <= Math.round(rating) ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30"} />
       ))}
+    </div>
+  );
+}
+
+// ─── THEME TOGGLE ────────────────────────────────────────────────────────────
+
+const THEME_ORDER = ["system", "light", "dark"] as const;
+type ThemeChoice = (typeof THEME_ORDER)[number];
+
+function ThemeCycleButton() {
+  const { theme, setTheme, resolvedTheme } = useTheme();
+  const current = (theme === "light" || theme === "dark" ? theme : "system") as ThemeChoice;
+  const next = THEME_ORDER[(THEME_ORDER.indexOf(current) + 1) % THEME_ORDER.length];
+  const Icon = resolvedTheme === "dark" ? Moon : current === "system" ? Monitor : Sun;
+  return (
+    <button onClick={() => setTheme(next)} aria-label={`Theme: ${current}. Switch to ${next}`}
+      title={`Theme: ${current} → ${next}`}
+      className="w-9 h-9 rounded-full bg-secondary border border-border flex items-center justify-center relative">
+      <Icon size={15} className="text-muted-foreground" />
+    </button>
+  );
+}
+
+function AppearanceSection() {
+  const { theme, setTheme } = useTheme();
+  const current = theme === "light" || theme === "dark" ? theme : "system";
+  const opts: { id: ThemeChoice; Icon: typeof Sun; label: string }[] = [
+    { id: "light", Icon: Sun, label: "Light" },
+    { id: "system", Icon: Monitor, label: "Auto" },
+    { id: "dark", Icon: Moon, label: "Dark" },
+  ];
+  return (
+    <div>
+      <p className="text-muted-foreground/70 text-[9px] font-bold tracking-[0.15em] uppercase mb-2 px-1">Appearance</p>
+      <div className="bg-card border border-border rounded-2xl p-1.5 flex gap-1">
+        {opts.map(({ id, Icon, label }) => (
+          <button key={id} onClick={() => setTheme(id)}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all ${current === id ? "bg-[#7B61FF] text-white" : "text-muted-foreground"}`}>
+            <Icon size={13} />
+            {label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -461,6 +506,7 @@ function HomeScreen({ onProduct, wishlisted, onWishlist, cartCount, onCart, onNa
             <h1 className="text-foreground font-bold text-lg leading-tight" style={PP}>Aryan Mehta</h1>
           </div>
           <div className="flex items-center gap-2">
+            <ThemeCycleButton />
             <button onClick={() => onNav("notifications")}
               className="w-9 h-9 rounded-full bg-secondary border border-border flex items-center justify-center relative">
               <Bell size={15} className="text-muted-foreground" />
@@ -961,7 +1007,7 @@ function ProfileScreen({ onNav }: { onNav: (s: Screen) => void }) {
           <div className="px-5 pb-5">
             <div className="flex items-end gap-4 -mt-10">
               <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#7B61FF] to-[#4a3adb] flex items-center justify-center border-4 border-background flex-shrink-0">
-                <span className="text-foreground text-2xl font-bold" style={PP}>AM</span>
+                <span className="text-white text-2xl font-bold" style={PP}>AM</span>
               </div>
               <div className="pb-1">
                 <h2 className="text-foreground font-bold text-lg leading-tight" style={PP}>Aryan Mehta</h2>
@@ -971,7 +1017,7 @@ function ProfileScreen({ onNav }: { onNav: (s: Screen) => void }) {
           </div>
         </div>
         <div className="mx-5 bg-card border border-border rounded-2xl p-4 mb-5">
-          <div className="grid grid-cols-3 divide-x divide-white/[0.06]">
+          <div className="grid grid-cols-3 divide-x divide-border">
             {[{ label: "Orders", value: "12" }, { label: "Wishlist", value: "3" }, { label: "Reviews", value: "7" }].map(({ label, value }) => (
               <div key={label} className="flex flex-col items-center px-4">
                 <span className="text-foreground font-bold text-2xl" style={PP}>{value}</span>
@@ -988,6 +1034,7 @@ function ProfileScreen({ onNav }: { onNav: (s: Screen) => void }) {
           </div>
         </div>
         <div className="px-5 pb-6 space-y-5">
+          <AppearanceSection />
           {sections.map((section) => (
             <div key={section.title}>
               <p className="text-muted-foreground/70 text-[9px] font-bold tracking-[0.15em] uppercase mb-2 px-1">{section.title}</p>
