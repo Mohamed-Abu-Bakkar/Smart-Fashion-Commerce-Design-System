@@ -1,0 +1,31 @@
+
+  <!DOCTYPE html>
+  <html lang="en">
+    <head>
+      
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>Smart Fashion Commerce Design System</title>
+      <meta name="description" content="Experience a premium AI-powered mobile shopping platform that personalizes fashion choices, offers intelligent bargaining, and connects users with community-driven trends." />
+      <meta name="robots" content="noindex, nofollow" />
+      <meta name="color-scheme" content="light dark" />
+      <style>html, body { height: 100%; margin: 0; } #root { height: 100%; } html { background: #FAF7F2; } html.dark { background: #0d0d0d; }</style>
+      <script>
+        try {
+          var t = localStorage.getItem("sf-theme");
+          if (t === "dark" || (!t && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+            document.documentElement.classList.add("dark");
+          }
+        } catch (e) {}
+      </script>
+      
+    </head>
+
+    <body>
+      
+      <div id="root"></div>
+      <script type="module" src="/src/main.tsx"></script>
+      
+    </body>
+  </html>
+  
