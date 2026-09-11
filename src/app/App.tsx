@@ -406,12 +406,14 @@ function OTPScreen({ email, demoCode, resendTick, onVerified, onBack, onResend }
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [resending, setResending] = useState(false);
+  const [focused, setFocused] = useState<number | null>(null);
   const refs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
     setTimer(30);
     setOtp(["", "", "", "", "", ""]);
     setError("");
+    setFocused(null);
     refs.current[0]?.focus();
   }, [resendTick]);
 
@@ -420,12 +422,34 @@ function OTPScreen({ email, demoCode, resendTick, onVerified, onBack, onResend }
     return () => clearInterval(t);
   }, []);
 
-  const handleChange = (i: number, val: string) => {
-    if (!/^\d?$/.test(val)) return;
+  const fillFrom = (digits: string, start: number) => {
     const next = [...otp];
-    next[i] = val;
+    let idx = start;
+    for (const ch of digits) {
+      if (idx > 5) break;
+      if (/\d/.test(ch)) next[idx++] = ch;
+    }
     setOtp(next);
-    if (val && i < 5) refs.current[i + 1]?.focus();
+    setError("");
+    refs.current[Math.min(idx, 5)]?.focus();
+  };
+
+  const handleChange = (i: number, val: string) => {
+    const digit = val.replace(/\D/g, "").slice(-1);
+    if (val !== "" && digit === "") return;
+    const next = [...otp];
+    next[i] = digit;
+    setOtp(next);
+    setError("");
+    if (digit && i < 5) refs.current[i + 1]?.focus();
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const text = e.clipboardData.getData("text");
+    if (/\d/.test(text)) {
+      e.preventDefault();
+      fillFrom(text, 0);
+    }
   };
 
   const handleKey = (i: number, e: React.KeyboardEvent) => {
@@ -462,9 +486,18 @@ function OTPScreen({ email, demoCode, resendTick, onVerified, onBack, onResend }
     }
   };
 
+  // Auto-submit once the 6th digit lands
+  useEffect(() => {
+    if (filled && !busy) {
+      const t = setTimeout(() => verify(), 350);
+      return () => clearTimeout(t);
+    }
+  }, [filled]);
+
   return (
-    <div className="h-full flex flex-col bg-background px-6 pt-8">
-      <button onClick={onBack} className="w-9 h-9 rounded-full bg-secondary border border-border flex items-center justify-center mb-8">
+    <div className="h-full flex flex-col bg-background px-6 pt-8 overflow-y-auto scrollbar-hide">
+      <div className="w-full max-w-md mx-auto flex flex-col flex-1">
+      <button onClick={onBack} className="self-start w-9 h-9 rounded-full bg-secondary border border-border flex items-center justify-center mb-8">
         <ArrowLeft size={17} className="text-foreground" />
       </button>
       <div className="w-16 h-16 rounded-2xl bg-[#7B61FF]/15 border border-[#7B61FF]/20 flex items-center justify-center mb-5">
@@ -482,26 +515,42 @@ function OTPScreen({ email, demoCode, resendTick, onVerified, onBack, onResend }
         <p className="text-red-400 text-xs font-medium mb-4 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2.5">{error}</p>
       )}
 
-      <div className="flex gap-3 mb-8">
-        {otp.map((d, i) => (
-          <input key={i} ref={(el) => { refs.current[i] = el; }}
-            value={d} onChange={(e) => handleChange(i, e.target.value)}
-            onKeyDown={(e) => handleKey(i, e)} maxLength={1} inputMode="numeric"
-            className="flex-1 h-14 bg-secondary border-2 rounded-2xl text-foreground text-xl font-bold text-center outline-none transition-colors"
-            style={{ borderColor: d ? "#7B61FF" : "var(--border)" }} />
-        ))}
+      <div className="flex gap-2 sm:gap-2.5 justify-center mb-8" onPaste={handlePaste}>
+        {otp.map((d, i) => {
+          const isFocused = focused === i;
+          const hasError = error !== "";
+          return (
+            <input key={`${resendTick}-${i}`} ref={(el) => { refs.current[i] = el; }}
+              value={d} onChange={(e) => handleChange(i, e.target.value)}
+              onKeyDown={(e) => handleKey(i, e)}
+              onFocus={() => { setFocused(i); refs.current[i]?.select(); }}
+              onBlur={() => setFocused(null)}
+              maxLength={1} inputMode="numeric" autoComplete={i === 0 ? "one-time-code" : "off"}
+              aria-label={`Digit ${i + 1}`}
+              className={`w-12 h-14 sm:w-[52px] sm:h-[60px] rounded-2xl text-foreground text-xl font-bold text-center outline-none caret-[#7B61FF] transition-all duration-150 border-2
+                ${hasError
+                  ? "bg-secondary border-red-500/60"
+                  : isFocused
+                    ? "bg-card border-[#7B61FF] ring-4 ring-[#7B61FF]/15 -translate-y-0.5 shadow-lg shadow-[#7B61FF]/20"
+                    : d
+                      ? "bg-[#7B61FF]/[0.07] border-[#7B61FF]/60"
+                      : "bg-secondary border-border hover:border-muted-foreground/40"}`}
+            />
+          );
+        })}
       </div>
 
       <button onClick={verify} disabled={!filled || busy}
-        className={`w-full py-4 rounded-2xl font-bold text-sm mb-4 transition-all ${filled && !busy ? "bg-[#7B61FF] text-white" : "bg-secondary text-muted-foreground/70"}`}>
+        className={`w-full py-4 rounded-2xl font-bold text-sm mb-4 transition-all ${filled && !busy ? "bg-[#7B61FF] text-white shadow-lg shadow-[#7B61FF]/30" : "bg-secondary text-muted-foreground/70"}`}>
         {busy ? "Verifying…" : "Verify & Continue"}
       </button>
 
-      <div className="flex items-center justify-center gap-2">
+      <div className="flex items-center justify-center gap-2 pb-8">
         <span className="text-muted-foreground/70 text-sm">Didn't receive it?</span>
         {timer > 0
-          ? <span className="text-muted-foreground text-sm">Resend in {timer}s</span>
+          ? <span className="text-muted-foreground text-sm tabular-nums">Resend in {timer}s</span>
           : <button onClick={resend} disabled={resending} className="text-[#7B61FF] text-sm font-semibold">{resending ? "Sending…" : "Resend OTP"}</button>}
+      </div>
       </div>
     </div>
   );
