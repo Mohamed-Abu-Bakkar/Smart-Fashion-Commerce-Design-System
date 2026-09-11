@@ -25,6 +25,7 @@ import {
   useShopData,
   type Product,
 } from "./data";
+import { useAuth, authErrorMessage, initialsOf, type SessionUser } from "./auth";
 type AppState = "splash" | "onboarding" | "login" | "otp" | "main";
 type MainTab = "home" | "discover" | "ai" | "wishlist" | "profile";
 type Screen =
@@ -245,10 +246,55 @@ function OnboardingScreen({ onDone }: { onDone: () => void }) {
   );
 }
 
-function LoginScreen({ onLogin, onSkip }: { onLogin: () => void; onSkip: () => void }) {
+function LoginScreen({ onAuthenticated, onSignupStarted, onGuest }: {
+  onAuthenticated: (u: SessionUser) => void;
+  onSignupStarted: (email: string, demoCode: string) => void;
+  onGuest: () => void;
+}) {
+  const auth = useAuth();
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [mode, setMode] = useState<"login" | "signup">("login");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const switchMode = (m: "login" | "signup") => { setMode(m); setError(""); };
+
+  const submit = async () => {
+    setError("");
+    const cleanEmail = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setError("Enter a valid email address.");
+      return;
+    }
+    if (pass.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
+    if (mode === "signup" && name.trim().length < 2) {
+      setError("Please enter your full name.");
+      return;
+    }
+    setBusy(true);
+    try {
+      if (mode === "login") {
+        const u = await auth.login(cleanEmail, pass);
+        onAuthenticated(u);
+      } else {
+        const { email: em, demoCode } = await auth.signup(name, cleanEmail, pass);
+        onSignupStarted(em, demoCode);
+      }
+    } catch (e: any) {
+      if (e?.code === "needs_verification" && e?.demoCode) {
+        onSignupStarted(cleanEmail, e.demoCode);
+        return;
+      }
+      setError(authErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="h-full flex flex-col bg-background overflow-y-auto scrollbar-hide">
@@ -272,7 +318,7 @@ function LoginScreen({ onLogin, onSkip }: { onLogin: () => void; onSkip: () => v
         {/* Mode toggle */}
         <div className="flex bg-secondary rounded-2xl p-1 mb-6">
           {["login", "signup"].map((m) => (
-            <button key={m} onClick={() => setMode(m as any)}
+            <button key={m} onClick={() => switchMode(m as any)}
               className={`flex-1 py-2 rounded-xl text-xs font-bold capitalize transition-all ${mode === m ? "bg-[#7B61FF] text-white" : "text-muted-foreground"}`}>
               {m === "login" ? "Sign In" : "Create Account"}
             </button>
@@ -291,18 +337,20 @@ function LoginScreen({ onLogin, onSkip }: { onLogin: () => void; onSkip: () => v
           {mode === "signup" && (
             <div className="flex items-center bg-secondary border border-border rounded-2xl px-4 py-3.5 gap-3">
               <User size={15} className="text-muted-foreground flex-shrink-0" />
-              <input placeholder="Full name" className="flex-1 bg-transparent text-foreground text-sm outline-none placeholder:text-muted-foreground/60" />
+              <input value={name} onChange={(e) => setName(e.target.value)}
+                placeholder="Full name" autoComplete="name" onKeyDown={(e) => e.key === "Enter" && submit()}
+                className="flex-1 bg-transparent text-foreground text-sm outline-none placeholder:text-muted-foreground/60" />
             </div>
           )}
           <div className="flex items-center bg-secondary border border-border rounded-2xl px-4 py-3.5 gap-3">
             <Mail size={15} className="text-muted-foreground flex-shrink-0" />
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email address" className="flex-1 bg-transparent text-foreground text-sm outline-none placeholder:text-muted-foreground/60" />
+              placeholder="Email address" autoComplete="email" onKeyDown={(e) => e.key === "Enter" && submit()} className="flex-1 bg-transparent text-foreground text-sm outline-none placeholder:text-muted-foreground/60" />
           </div>
           <div className="flex items-center bg-secondary border border-border rounded-2xl px-4 py-3.5 gap-3">
             <Lock size={15} className="text-muted-foreground flex-shrink-0" />
             <input type="password" value={pass} onChange={(e) => setPass(e.target.value)}
-              placeholder="Password" className="flex-1 bg-transparent text-foreground text-sm outline-none placeholder:text-muted-foreground/60" />
+              placeholder="Password" autoComplete={mode === "login" ? "current-password" : "new-password"} onKeyDown={(e) => e.key === "Enter" && submit()} className="flex-1 bg-transparent text-foreground text-sm outline-none placeholder:text-muted-foreground/60" />
           </div>
         </div>
 
@@ -310,9 +358,13 @@ function LoginScreen({ onLogin, onSkip }: { onLogin: () => void; onSkip: () => v
           <button className="text-[#7B61FF] text-xs font-semibold mb-5">Forgot password?</button>
         )}
 
-        <button onClick={onLogin}
-          className="w-full bg-[#7B61FF] text-white py-4 rounded-2xl font-bold text-sm mb-5">
-          {mode === "login" ? "Sign In" : "Create Account"}
+        {error !== "" && (
+          <p className="text-red-400 text-xs font-medium mb-4 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2.5">{error}</p>
+        )}
+
+        <button onClick={submit} disabled={busy}
+          className={`w-full py-4 rounded-2xl font-bold text-sm mb-5 transition-all ${busy ? "bg-secondary text-muted-foreground/70" : "bg-[#7B61FF] text-white"}`}>
+          {busy ? "Please wait…" : mode === "login" ? "Sign In" : "Create Account"}
         </button>
 
         <div className="flex items-center gap-3 mb-5">
@@ -326,7 +378,7 @@ function LoginScreen({ onLogin, onSkip }: { onLogin: () => void; onSkip: () => v
             { label: "Google", icon: "G" },
             { label: "Apple", icon: "" },
           ].map(({ label, icon }) => (
-            <button key={label} onClick={onLogin}
+            <button key={label} onClick={onGuest}
               className="flex items-center justify-center gap-2 bg-secondary border border-border rounded-2xl py-3.5">
               <span className="text-foreground text-sm font-bold">{icon}</span>
               <span className="text-foreground text-sm font-medium">{label}</span>
@@ -334,7 +386,7 @@ function LoginScreen({ onLogin, onSkip }: { onLogin: () => void; onSkip: () => v
           ))}
         </div>
 
-        <button onClick={onSkip}
+        <button onClick={onGuest}
           className="w-full text-muted-foreground/70 text-xs text-center py-2">
           Skip for now — browse as guest
         </button>
@@ -343,10 +395,25 @@ function LoginScreen({ onLogin, onSkip }: { onLogin: () => void; onSkip: () => v
   );
 }
 
-function OTPScreen({ onVerify, onBack }: { onVerify: () => void; onBack: () => void }) {
+function OTPScreen({ email, demoCode, resendTick, onVerified, onBack, onResend }: {
+  email: string; demoCode: string; resendTick: number;
+  onVerified: (u: SessionUser) => void; onBack: () => void;
+  onResend: () => Promise<string>;
+}) {
+  const auth = useAuth();
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [timer, setTimer] = useState(30);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [resending, setResending] = useState(false);
   const refs = useRef<(HTMLInputElement | null)[]>([]);
+
+  useEffect(() => {
+    setTimer(30);
+    setOtp(["", "", "", "", "", ""]);
+    setError("");
+    refs.current[0]?.focus();
+  }, [resendTick]);
 
   useEffect(() => {
     const t = setInterval(() => setTimer((p) => (p > 0 ? p - 1 : 0)), 1000);
@@ -363,9 +430,37 @@ function OTPScreen({ onVerify, onBack }: { onVerify: () => void; onBack: () => v
 
   const handleKey = (i: number, e: React.KeyboardEvent) => {
     if (e.key === "Backspace" && !otp[i] && i > 0) refs.current[i - 1]?.focus();
+    if (e.key === "Enter") verify();
   };
 
   const filled = otp.every((d) => d !== "");
+
+  const verify = async () => {
+    if (!filled || busy) return;
+    setError("");
+    setBusy(true);
+    try {
+      const u = await auth.verifyOtp(email, otp.join(""));
+      onVerified(u);
+    } catch (e: any) {
+      setError(authErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resend = async () => {
+    if (timer > 0 || resending) return;
+    setError("");
+    setResending(true);
+    try {
+      await onResend();
+    } catch (e: any) {
+      setError(authErrorMessage(e));
+    } finally {
+      setResending(false);
+    }
+  };
 
   return (
     <div className="h-full flex flex-col bg-background px-6 pt-8">
@@ -376,7 +471,16 @@ function OTPScreen({ onVerify, onBack }: { onVerify: () => void; onBack: () => v
         <Mail size={28} className="text-[#7B61FF]" />
       </div>
       <h2 className="text-foreground text-2xl font-bold mb-1" style={PP}>Verify Email</h2>
-      <p className="text-muted-foreground text-sm mb-8">We sent a 6-digit code to<br /><span className="text-foreground font-medium">aryan@gmail.com</span></p>
+      <p className="text-muted-foreground text-sm mb-4">We sent a 6-digit code to<br /><span className="text-foreground font-medium">{email}</span></p>
+
+      <div className="bg-amber-500/10 border border-amber-500/25 rounded-2xl px-4 py-3 mb-6 flex items-center gap-3">
+        <Mail size={15} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
+        <p className="text-xs text-muted-foreground">Demo mode — no email service connected. Your code is <span className="text-foreground font-bold text-sm tracking-widest">{demoCode}</span></p>
+      </div>
+
+      {error !== "" && (
+        <p className="text-red-400 text-xs font-medium mb-4 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2.5">{error}</p>
+      )}
 
       <div className="flex gap-3 mb-8">
         {otp.map((d, i) => (
@@ -388,16 +492,16 @@ function OTPScreen({ onVerify, onBack }: { onVerify: () => void; onBack: () => v
         ))}
       </div>
 
-      <button onClick={onVerify} disabled={!filled}
-        className={`w-full py-4 rounded-2xl font-bold text-sm mb-4 transition-all ${filled ? "bg-[#7B61FF] text-white" : "bg-secondary text-muted-foreground/70"}`}>
-        Verify & Continue
+      <button onClick={verify} disabled={!filled || busy}
+        className={`w-full py-4 rounded-2xl font-bold text-sm mb-4 transition-all ${filled && !busy ? "bg-[#7B61FF] text-white" : "bg-secondary text-muted-foreground/70"}`}>
+        {busy ? "Verifying…" : "Verify & Continue"}
       </button>
 
       <div className="flex items-center justify-center gap-2">
         <span className="text-muted-foreground/70 text-sm">Didn't receive it?</span>
         {timer > 0
           ? <span className="text-muted-foreground text-sm">Resend in {timer}s</span>
-          : <button className="text-[#7B61FF] text-sm font-semibold">Resend OTP</button>}
+          : <button onClick={resend} disabled={resending} className="text-[#7B61FF] text-sm font-semibold">{resending ? "Sending…" : "Resend OTP"}</button>}
       </div>
     </div>
   );
@@ -407,10 +511,10 @@ function OTPScreen({ onVerify, onBack }: { onVerify: () => void; onBack: () => v
 // MAIN SCREENS
 // ═══════════════════════════════════════════════════════════════════════════
 
-function HomeScreen({ onProduct, wishlisted, onWishlist, cartCount, onCart, onNav }: {
+function HomeScreen({ onProduct, wishlisted, onWishlist, cartCount, onCart, onNav, userName }: {
   onProduct: (p: Product) => void; wishlisted: number[];
   onWishlist: (id: number) => void; cartCount: number; onCart: () => void;
-  onNav: (s: Screen) => void;
+  onNav: (s: Screen) => void; userName: string;
 }) {
   const PRODUCTS = useShopData().products; // live (Convex) with mock fallback
   const [timeLeft, setTimeLeft] = useState({ h: 2, m: 47, s: 33 });
@@ -433,7 +537,7 @@ function HomeScreen({ onProduct, wishlisted, onWishlist, cartCount, onCart, onNa
         <div className="flex items-center justify-between mb-3">
           <div>
             <p className="text-muted-foreground text-[11px]">Good morning 👋</p>
-            <h1 className="text-foreground font-bold text-lg leading-tight" style={PP}>Aryan Mehta</h1>
+            <h1 className="text-foreground font-bold text-lg leading-tight" style={PP}>{userName}</h1>
           </div>
           <div className="flex items-center gap-2">
             <ThemeCycleButton />
@@ -900,7 +1004,9 @@ function WishlistScreen({ products, onProduct, onRemove }: {
 
 // ─── PROFILE ─────────────────────────────────────────────────────────────────
 
-function ProfileScreen({ onNav }: { onNav: (s: Screen) => void }) {
+function ProfileScreen({ onNav, user, onSignOut }: {
+  onNav: (s: Screen) => void; user: SessionUser; onSignOut: () => void;
+}) {
   const sections = [
     {
       title: "Shopping",
@@ -939,11 +1045,11 @@ function ProfileScreen({ onNav }: { onNav: (s: Screen) => void }) {
           <div className="px-5 pb-5">
             <div className="flex items-end gap-4 -mt-10">
               <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#7B61FF] to-[#4a3adb] flex items-center justify-center border-4 border-background flex-shrink-0">
-                <span className="text-white text-2xl font-bold" style={PP}>AM</span>
+                <span className="text-white text-2xl font-bold" style={PP}>{initialsOf(user.name)}</span>
               </div>
               <div className="pb-1">
-                <h2 className="text-foreground font-bold text-lg leading-tight" style={PP}>Aryan Mehta</h2>
-                <p className="text-muted-foreground text-xs">aryan.mehta@gmail.com</p>
+                <h2 className="text-foreground font-bold text-lg leading-tight" style={PP}>{user.name}</h2>
+                <p className="text-muted-foreground text-xs">{user.guest ? "Browsing as guest" : user.email}</p>
               </div>
             </div>
           </div>
@@ -973,7 +1079,10 @@ function ProfileScreen({ onNav }: { onNav: (s: Screen) => void }) {
               <div className="bg-card border border-border rounded-2xl overflow-hidden">
                 {section.items.map((item, i) => (
                   <button key={item.label}
-                    onClick={() => item.action && onNav(item.action)}
+                    onClick={() => {
+                      if (item.label === "Sign Out") onSignOut();
+                      else if (item.action) onNav(item.action);
+                    }}
                     className={`w-full flex items-center gap-3 px-4 py-3.5 hover:bg-foreground/[0.03] transition-colors text-left ${i < section.items.length - 1 ? "border-b border-border" : ""}`}>
                     <span className="text-base w-5 text-center">{item.icon}</span>
                     <span className={`flex-1 text-sm font-medium ${item.danger ? "text-red-400" : "text-foreground"}`}>{item.label}</span>
@@ -1464,7 +1573,7 @@ function CartScreen({ items, onBack, onCheckout, onRemove }: {
 
 // ─── CHECKOUT ─────────────────────────────────────────────────────────────────
 
-function CheckoutScreen({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => void }) {
+function CheckoutScreen({ onBack, onSuccess, userName }: { onBack: () => void; onSuccess: () => void; userName: string }) {
   const [payment, setPayment] = useState("upi");
   const [placing, setPlacing] = useState(false);
   const handlePlace = () => { setPlacing(true); setTimeout(onSuccess, 2000); };
@@ -1482,7 +1591,7 @@ function CheckoutScreen({ onBack, onSuccess }: { onBack: () => void; onSuccess: 
               <div className="flex items-center gap-2"><MapPin size={14} className="text-[#7B61FF]" /><p className="text-foreground font-semibold text-sm">Delivery Address</p></div>
               <button className="text-[#7B61FF] text-xs font-bold">Change</button>
             </div>
-            <p className="text-foreground text-sm font-medium">Aryan Mehta</p>
+            <p className="text-foreground text-sm font-medium">{userName}</p>
             <p className="text-muted-foreground text-xs mt-0.5 leading-relaxed">42, Sunrise Apartments, Bandra West<br />Mumbai, Maharashtra 400050</p>
             <div className="flex items-center gap-2 mt-2">
               <span className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[9px] font-bold px-2 py-0.5 rounded-full">Home</span>
@@ -2196,17 +2305,20 @@ function RetailerDashboard({ onBack }: { onBack: () => void }) {
 
 export default function App() {
   const { products: liveProducts } = useShopData(); // live (Convex) with mock fallback
+  const auth = useAuth();
   const [appState, setAppState] = useState<AppState>("splash");
   const [screen, setScreen] = useState<Screen>("home");
   const [activeTab, setActiveTab] = useState<MainTab>("home");
   const [selectedProduct, setSelectedProduct] = useState<Product>(PRODUCTS[0]);
   const [cartItems, setCartItems] = useState<Product[]>([]);
   const [wishlisted, setWishlisted] = useState<number[]>([1, 3, 4]);
+  const [pending, setPending] = useState<{ email: string; code: string } | null>(null);
+  const [resendTick, setResendTick] = useState(0);
 
-  // Auto-advance from splash
+  // Auto-advance from splash — resume session when one exists
   useEffect(() => {
     if (appState === "splash") {
-      const t = setTimeout(() => setAppState("onboarding"), 2500);
+      const t = setTimeout(() => setAppState(auth.user ? "main" : "onboarding"), 2500);
       return () => clearTimeout(t);
     }
   }, [appState]);
@@ -2230,34 +2342,57 @@ export default function App() {
     setCartItems((prev) => (prev.find((i) => i.id === p.id) ? prev : [...prev, p]));
   const handleTab = (tab: MainTab) => { setActiveTab(tab); setScreen(tab); };
 
+  const showLogin = () => (
+    <LoginScreen
+      onAuthenticated={() => setAppState("main")}
+      onSignupStarted={(email, code) => {
+        setPending({ email, code });
+        setResendTick(0);
+        setAppState("otp");
+      }}
+      onGuest={() => {
+        auth.enterGuest();
+        setAppState("main");
+      }}
+    />
+  );
+
   const renderContent = () => {
     // Auth flow
     if (appState === "splash") return <SplashScreen />;
     if (appState === "onboarding") return <OnboardingScreen onDone={() => setAppState("login")} />;
-    if (appState === "login") return (
-      <LoginScreen
-        onLogin={() => setAppState("otp")}
-        onSkip={() => setAppState("main")}
-      />
-    );
-    if (appState === "otp") return (
-      <OTPScreen
-        onVerify={() => setAppState("main")}
-        onBack={() => setAppState("login")}
-      />
-    );
+    if (appState === "login") return showLogin();
+    if (appState === "otp") {
+      if (!pending) return showLogin();
+      return (
+        <OTPScreen
+          key={pending.email}
+          email={pending.email}
+          demoCode={pending.code}
+          resendTick={resendTick}
+          onVerified={() => setAppState("main")}
+          onBack={() => setAppState("login")}
+          onResend={async () => {
+            const { demoCode } = await auth.resendOtp(pending.email);
+            setPending({ email: pending.email, code: demoCode });
+            setResendTick((t) => t + 1);
+            return demoCode;
+          }}
+        />
+      );
+    }
 
     // Main app screens
     switch (screen) {
-      case "home": return <HomeScreen onProduct={openProduct} wishlisted={wishlisted} onWishlist={toggleWishlist} cartCount={cartItems.length} onCart={() => navigate("cart")} onNav={navigate} />;
+      case "home": return <HomeScreen onProduct={openProduct} wishlisted={wishlisted} onWishlist={toggleWishlist} cartCount={cartItems.length} onCart={() => navigate("cart")} onNav={navigate} userName={auth.user?.name ?? "Guest"} />;
       case "discover": return <DiscoverScreen onProduct={openProduct} wishlisted={wishlisted} onWishlist={toggleWishlist} />;
       case "ai": return <AIScreen />;
       case "wishlist": return <WishlistScreen products={liveProducts.filter((p) => wishlisted.includes(p.id))} onProduct={openProduct} onRemove={toggleWishlist} />;
-      case "profile": return <ProfileScreen onNav={navigate} />;
+      case "profile": return <ProfileScreen onNav={navigate} user={auth.user ?? { name: "Guest", email: "", guest: true }} onSignOut={() => { auth.signOut(); setActiveTab("home"); setScreen("home"); setAppState("login"); }} />;
       case "product": return <ProductDetailScreen p={selectedProduct} onBack={goBack} wishlisted={wishlisted.includes(selectedProduct.id)} onWishlist={() => toggleWishlist(selectedProduct.id)} onAddToCart={() => addToCart(selectedProduct)} onBargain={() => navigate("bargain")} onCustomSize={() => navigate("custom-size")} cartCount={cartItems.length} onCart={() => navigate("cart")} />;
       case "bargain": return <BargainingScreen p={selectedProduct} onBack={goBack} />;
       case "cart": return <CartScreen items={cartItems} onBack={goBack} onCheckout={() => navigate("checkout")} onRemove={(id) => setCartItems((prev) => prev.filter((i) => i.id !== id))} />;
-      case "checkout": return <CheckoutScreen onBack={goBack} onSuccess={() => { setCartItems([]); navigate("orders"); }} />;
+      case "checkout": return <CheckoutScreen onBack={goBack} onSuccess={() => { setCartItems([]); navigate("orders"); }} userName={auth.user?.name ?? "Guest"} />;
       case "orders": return <OrdersScreen onBack={goBack} />;
       case "notifications": return <NotificationsScreen onBack={goBack} />;
       case "custom-size": return <CustomSizeScreen onBack={goBack} />;

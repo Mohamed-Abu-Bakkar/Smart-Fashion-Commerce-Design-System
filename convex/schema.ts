@@ -68,4 +68,19 @@ export default defineSchema({
     unread: v.boolean(),
     sort: v.number(),
   }).index("by_sort", ["sort"]),
+
+  users: defineTable({
+    name: v.string(),
+    email: v.string(), // lowercase
+    passwordHash: v.string(),
+    verified: v.boolean(),
+    createdAt: v.number(),
+  }).index("by_email", ["email"]),
+
+  otpCodes: defineTable({
+    email: v.string(), // lowercase
+    code: v.string(),
+    expiresAt: v.number(),
+    attempts: v.number(),
+  }).index("by_email", ["email"]),
 });
