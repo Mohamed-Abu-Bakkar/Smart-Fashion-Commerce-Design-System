@@ -17,85 +17,14 @@ import {
   Tooltip, BarChart, Bar,
 } from "recharts";
 
-// ─── DATA ────────────────────────────────────────────────────────────────────
-
-const PRODUCTS = [
-  {
-    id: 1, name: "Shadow Bomber", brand: "Studio Noir",
-    price: 3299, original: 4899, discount: 33, rating: 4.9, reviews: 284,
-    img: "https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=400&h=520&fit=crop&auto=format",
-    category: "Outerwear", colors: ["#111111", "#7B3F00", "#1a3040"],
-    sizes: ["XS", "S", "M", "L", "XL"], isNew: true, isTrending: true,
-    material: "100% Italian Nylon Shell",
-    desc: "The Shadow Bomber redefines urban outerwear. Crafted from premium Italian nylon with satin luster finish, moving with you without compromising structure.",
-  },
-  {
-    id: 2, name: "Void Hoodie", brand: "Monochrome",
-    price: 1899, original: 2499, discount: 24, rating: 4.7, reviews: 412,
-    img: "https://images.unsplash.com/photo-1556821840-3a63f15e8add?w=400&h=520&fit=crop&auto=format",
-    category: "Hoodies", colors: ["#111111", "#f0ede8", "#7B61FF"],
-    sizes: ["S", "M", "L", "XL", "XXL"], isNew: false, isTrending: true,
-    material: "380GSM French Terry Cotton",
-    desc: "Heavyweight comfort meets minimalist design. 380GSM French terry construction for exceptional warmth without bulk.",
-  },
-  {
-    id: 3, name: "Eclipse Dress", brand: "Form Studio",
-    price: 2799, original: 3499, discount: 20, rating: 4.8, reviews: 193,
-    img: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=400&h=520&fit=crop&auto=format",
-    category: "Dresses", colors: ["#111111", "#1a1a2e", "#2d1b4e"],
-    sizes: ["XS", "S", "M", "L"], isNew: true, isTrending: false,
-    material: "Viscose-Elastane Blend",
-    desc: "The Eclipse Dress flows with architectural precision. Bias cut construction skims the body while allowing full range of movement.",
-  },
-  {
-    id: 4, name: "Phantom Runner", brand: "Motion Lab",
-    price: 4999, original: 6500, discount: 23, rating: 4.9, reviews: 671,
-    img: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&h=520&fit=crop&auto=format",
-    category: "Footwear", colors: ["#f5f5f5", "#111111", "#7B61FF"],
-    sizes: ["38", "39", "40", "41", "42", "43", "44"], isNew: false, isTrending: true,
-    material: "Engineered Mesh Upper",
-    desc: "Track-bred performance meets street aesthetics. ReactFoam midsole delivers responsive cushioning across all surfaces.",
-  },
-  {
-    id: 5, name: "Flux Tee", brand: "Basics Lab",
-    price: 899, original: 1199, discount: 25, rating: 4.6, reviews: 892,
-    img: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=520&fit=crop&auto=format",
-    category: "T-Shirts", colors: ["#111111", "#f5f5f0", "#3d3d3d"],
-    sizes: ["XS", "S", "M", "L", "XL", "XXL"], isNew: false, isTrending: false,
-    material: "220GSM Supima Cotton",
-    desc: "The definitive oversized tee. 220GSM Supima cotton delivers exceptional softness that deepens with every wash.",
-  },
-  {
-    id: 6, name: "Obsidian Blazer", brand: "Atelier Void",
-    price: 5499, original: 7999, discount: 31, rating: 4.8, reviews: 156,
-    img: "https://images.unsplash.com/photo-1539109136881-3be0616acf4b?w=400&h=520&fit=crop&auto=format",
-    category: "Formal", colors: ["#111111", "#1c1c1c", "#2c2c2c"],
-    sizes: ["XS", "S", "M", "L", "XL"], isNew: true, isTrending: false,
-    material: "Italian Wool-Silk Blend",
-    desc: "Half-canvas construction ensures the Obsidian Blazer molds to your body over time. Premium wool-silk blend with refined hand.",
-  },
-];
-
-const REVENUE_DATA = [
-  { day: "Mon", rev: 12400, orders: 34 },
-  { day: "Tue", rev: 18200, orders: 51 },
-  { day: "Wed", rev: 9800, orders: 28 },
-  { day: "Thu", rev: 24600, orders: 67 },
-  { day: "Fri", rev: 31200, orders: 89 },
-  { day: "Sat", rev: 28900, orders: 78 },
-  { day: "Sun", rev: 19700, orders: 54 },
-];
-
-const SIZE_DEMAND = [
-  { size: "XS", demand: 18 },
-  { size: "S", demand: 34 },
-  { size: "M", demand: 58 },
-  { size: "L", demand: 47 },
-  { size: "XL", demand: 29 },
-  { size: "XXL", demand: 12 },
-];
-
-type Product = (typeof PRODUCTS)[0];
+// ─── DATA (Convex-backed; local mock fallback until VITE_CONVEX_URL is set) ────
+import {
+  FALLBACK_PRODUCTS as PRODUCTS,
+  FALLBACK_REVENUE as REVENUE_DATA,
+  FALLBACK_SIZES as SIZE_DEMAND,
+  useShopData,
+  type Product,
+} from "./data";
 type AppState = "splash" | "onboarding" | "login" | "otp" | "main";
 type MainTab = "home" | "discover" | "ai" | "wishlist" | "profile";
 type Screen =
@@ -483,6 +412,7 @@ function HomeScreen({ onProduct, wishlisted, onWishlist, cartCount, onCart, onNa
   onWishlist: (id: number) => void; cartCount: number; onCart: () => void;
   onNav: (s: Screen) => void;
 }) {
+  const PRODUCTS = useShopData().products; // live (Convex) with mock fallback
   const [timeLeft, setTimeLeft] = useState({ h: 2, m: 47, s: 33 });
   const [activeCat, setActiveCat] = useState("All");
   const cats = ["All", "Outerwear", "Hoodies", "Dresses", "Footwear", "T-Shirts", "Formal"];
@@ -706,6 +636,7 @@ function HomeScreen({ onProduct, wishlisted, onWishlist, cartCount, onCart, onNa
 function DiscoverScreen({ onProduct, wishlisted, onWishlist }: {
   onProduct: (p: Product) => void; wishlisted: number[]; onWishlist: (id: number) => void;
 }) {
+  const PRODUCTS = useShopData().products; // live (Convex) with mock fallback
   const [filter, setFilter] = useState("All");
   const [sort, setSort] = useState("Trending");
   const [showSort, setShowSort] = useState(false);
@@ -784,6 +715,7 @@ function DiscoverScreen({ onProduct, wishlisted, onWishlist }: {
 // ─── AI SCREEN ───────────────────────────────────────────────────────────────
 
 function AIScreen() {
+  const PRODUCTS = useShopData().products; // live (Convex) with mock fallback
   const [messages, setMessages] = useState([{
     role: "ai",
     text: "Hi! I'm your AI Fashion Assistant ✨\n\nDescribe your occasion, budget, or vibe — I'll curate perfect outfits instantly.",
@@ -1065,6 +997,7 @@ function ProductDetailScreen({ p, onBack, wishlisted, onWishlist, onAddToCart, o
   onAddToCart: () => void; onBargain: () => void; onCustomSize: () => void;
   cartCount: number; onCart: () => void;
 }) {
+  const PRODUCTS = useShopData().products; // live (Convex) with mock fallback
   const [selColor, setSelColor] = useState(0);
   const [selSize, setSelSize] = useState(1);
   const [qty, setQty] = useState(1);
@@ -1598,6 +1531,7 @@ function CheckoutScreen({ onBack, onSuccess }: { onBack: () => void; onSuccess: 
 // ─── ORDERS ───────────────────────────────────────────────────────────────────
 
 function OrdersScreen({ onBack }: { onBack: () => void }) {
+  const PRODUCTS = useShopData().products; // live (Convex) with mock fallback
   const steps = [
     { label: "Order Placed", time: "Today, 2:34 PM", done: true },
     { label: "Payment Confirmed", time: "Today, 2:35 PM", done: true },
@@ -1652,36 +1586,7 @@ function OrdersScreen({ onBack }: { onBack: () => void }) {
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
 
 function NotificationsScreen({ onBack }: { onBack: () => void }) {
-  const groups = [
-    {
-      title: "Price Alerts", color: "#f59e0b", icon: Tag,
-      items: [
-        { title: "Shadow Bomber dropped 8%", sub: "Now ₹3,299 · Was ₹3,599", time: "2h ago", unread: true },
-        { title: "Void Hoodie back in stock", sub: "Size M · Limited units", time: "5h ago", unread: true },
-      ],
-    },
-    {
-      title: "Order Updates", color: "#10b981", icon: Package,
-      items: [
-        { title: "Your order is packed", sub: "#SFC-2025-7841 · Out for delivery tomorrow", time: "Yesterday", unread: false },
-        { title: "Order delivered!", sub: "#SFC-2025-7823 · Tap to rate", time: "Jan 10", unread: false },
-      ],
-    },
-    {
-      title: "AI Suggestions", color: "#7B61FF", icon: Sparkles,
-      items: [
-        { title: "New drops match your aesthetic", sub: "12 products added to your feed", time: "3h ago", unread: true },
-        { title: "Flash sale starting in 2h", sub: "Items on your wishlist are 30% off", time: "4h ago", unread: false },
-      ],
-    },
-    {
-      title: "Community", color: "#ec4899", icon: Users,
-      items: [
-        { title: "Your collection request got 50 votes!", sub: "\"Dark Academia SS25\" is trending", time: "1d ago", unread: false },
-        { title: "Riya S. voted on your pick", sub: "Phantom Runner · Community top pick", time: "2d ago", unread: false },
-      ],
-    },
-  ];
+  const { notificationGroups: groups } = useShopData(); // live (Convex) with mock fallback
 
   return (
     <div className="h-full flex flex-col">
@@ -1846,18 +1751,7 @@ function CustomSizeScreen({ onBack }: { onBack: () => void }) {
 function CommunityScreen({ onBack }: { onBack: () => void }) {
   const [tab, setTab] = useState<"requests" | "voting">("requests");
   const [liked, setLiked] = useState<number[]>([]);
-
-  const requests = [
-    { id: 1, title: "Dark Academia SS25", category: "Formal", votes: 1247, interested: 892, status: "In Review", img: PRODUCTS[5].img, creator: "Aryan M." },
-    { id: 2, title: "Y2K Revival Collection", category: "Casual", votes: 934, interested: 671, status: "Approved", img: PRODUCTS[1].img, creator: "Riya S." },
-    { id: 3, title: "Monochrome Minimalist", category: "All", votes: 723, interested: 512, status: "In Production", img: PRODUCTS[0].img, creator: "Priya M." },
-  ];
-
-  const votingCards = [
-    { id: 1, designer: "Studio Noir", title: "Obsidian Series", likes: 3241, comments: 87, launch: "Feb 2025", img: PRODUCTS[0].img, progress: 78 },
-    { id: 2, designer: "Form Studio", title: "Glass & Shadow", likes: 2109, comments: 54, launch: "Mar 2025", img: PRODUCTS[2].img, progress: 51 },
-    { id: 3, designer: "Motion Lab", title: "Velocity Pack", likes: 1834, comments: 43, launch: "Apr 2025", img: PRODUCTS[3].img, progress: 34 },
-  ];
+  const { collectionRequests: requests, votingCards } = useShopData(); // live with mock fallback
 
   return (
     <div className="h-full flex flex-col">
@@ -1954,6 +1848,7 @@ function CommunityScreen({ onBack }: { onBack: () => void }) {
 // ─── OUTFIT BUILDER ───────────────────────────────────────────────────────────
 
 function OutfitBuilderScreen({ onBack, onProduct }: { onBack: () => void; onProduct: (p: Product) => void }) {
+  const PRODUCTS = useShopData().products; // live (Convex) with mock fallback
   const slots = [
     { label: "Top", icon: Shirt, product: PRODUCTS[1], color: "#7B61FF" },
     { label: "Bottom", icon: Layers, product: PRODUCTS[4], color: "#10b981" },
@@ -2054,6 +1949,7 @@ function OutfitBuilderScreen({ onBack, onProduct }: { onBack: () => void; onProd
 
 function WardrobeScreen({ onBack, onProduct }: { onBack: () => void; onProduct: (p: Product) => void }) {
   const [filter, setFilter] = useState("All");
+  const PRODUCTS = useShopData().products; // live (Convex) with mock fallback
   const cats = ["All", "Tops", "Bottoms", "Shoes", "Outerwear"];
 
   return (
@@ -2156,6 +2052,7 @@ function WardrobeScreen({ onBack, onProduct }: { onBack: () => void; onProduct: 
 // ─── RETAILER DASHBOARD ───────────────────────────────────────────────────────
 
 function RetailerDashboard({ onBack }: { onBack: () => void }) {
+  const { products: PRODUCTS, revenue: REVENUE_DATA, sizeDemand: SIZE_DEMAND } = useShopData(); // live with mock fallback
   const stats = [
     { label: "Revenue", value: "₹1,44,200", change: "+18%", up: true },
     { label: "Orders", value: "401", change: "+12%", up: true },
@@ -2298,6 +2195,7 @@ function RetailerDashboard({ onBack }: { onBack: () => void }) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export default function App() {
+  const { products: liveProducts } = useShopData(); // live (Convex) with mock fallback
   const [appState, setAppState] = useState<AppState>("splash");
   const [screen, setScreen] = useState<Screen>("home");
   const [activeTab, setActiveTab] = useState<MainTab>("home");
@@ -2354,7 +2252,7 @@ export default function App() {
       case "home": return <HomeScreen onProduct={openProduct} wishlisted={wishlisted} onWishlist={toggleWishlist} cartCount={cartItems.length} onCart={() => navigate("cart")} onNav={navigate} />;
       case "discover": return <DiscoverScreen onProduct={openProduct} wishlisted={wishlisted} onWishlist={toggleWishlist} />;
       case "ai": return <AIScreen />;
-      case "wishlist": return <WishlistScreen products={PRODUCTS.filter((p) => wishlisted.includes(p.id))} onProduct={openProduct} onRemove={toggleWishlist} />;
+      case "wishlist": return <WishlistScreen products={liveProducts.filter((p) => wishlisted.includes(p.id))} onProduct={openProduct} onRemove={toggleWishlist} />;
       case "profile": return <ProfileScreen onNav={navigate} />;
       case "product": return <ProductDetailScreen p={selectedProduct} onBack={goBack} wishlisted={wishlisted.includes(selectedProduct.id)} onWishlist={() => toggleWishlist(selectedProduct.id)} onAddToCart={() => addToCart(selectedProduct)} onBargain={() => navigate("bargain")} onCustomSize={() => navigate("custom-size")} cartCount={cartItems.length} onCart={() => navigate("cart")} />;
       case "bargain": return <BargainingScreen p={selectedProduct} onBack={goBack} />;
