@@ -131,29 +131,72 @@ const NOTIFICATIONS = [
   { group: "Community", color: "#ec4899", icon: "users", title: "Riya S. voted on your pick", sub: "Phantom Runner · Community top pick", time: "2d ago", unread: false, sort: 7 },
 ];
 
+const REVIEW_TEXTS = [
+  { author: "Riya S.", rating: 5, date: "Jan 10", text: "Absolutely stunning quality. The fit is perfect and the fabric feels premium.", avatar: "RS", sort: 0 },
+  { author: "Arjun K.", rating: 4, date: "Jan 7", text: "Great product, slightly oversized but that's the aesthetic. Highly recommend.", avatar: "AK", sort: 1 },
+  { author: "Priya M.", rating: 5, date: "Dec 29", text: "Worth every rupee. The dark colorway is exactly as shown in photos.", avatar: "PM", sort: 2 },
+];
+
 export const seedAll = mutation({
   args: {},
   handler: async (ctx) => {
-    const existing = await ctx.db.query("products").first();
-    if (existing) return { seeded: false, reason: "products already seeded" };
-
-    for (const p of PRODUCTS) await ctx.db.insert("products", p);
-    for (const r of REVENUE) await ctx.db.insert("revenueDaily", r);
-    for (const s of SIZES) await ctx.db.insert("sizeDemand", s);
-    for (const r of REQUESTS) await ctx.db.insert("collectionRequests", r);
-    for (const v of VOTING) await ctx.db.insert("votingCards", v);
-    for (const n of NOTIFICATIONS) await ctx.db.insert("notifications", n);
-
-    return {
-      seeded: true,
-      counts: {
-        products: PRODUCTS.length,
-        revenueDaily: REVENUE.length,
-        sizeDemand: SIZES.length,
-        collectionRequests: REQUESTS.length,
-        votingCards: VOTING.length,
-        notifications: NOTIFICATIONS.length,
-      },
+    const counts: Record<string, number> = {};
+    const seedTable = async (table: any, docs: any[]) => {
+      const existing = await ctx.db.query(table).first();
+      if (existing) {
+        counts[table] = -1; // already seeded, skipped
+        return;
+      }
+      for (const d of docs) await ctx.db.insert(table, d);
+      counts[table] = docs.length;
     };
+
+    await seedTable("products", PRODUCTS);
+    await seedTable("revenueDaily", REVENUE);
+    await seedTable("sizeDemand", SIZES);
+    await seedTable("collectionRequests", REQUESTS);
+    await seedTable("votingCards", VOTING);
+    await seedTable("notifications", NOTIFICATIONS);
+    await seedTable(
+      "productReviews",
+      PRODUCTS.flatMap((p) => REVIEW_TEXTS.map((r) => ({ productId: p.id, ...r }))),
+    );
+
+    // Demo-shopper starter data (only when the demo account exists)
+    const demo = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q: any) => q.eq("email", "demo@sfcommerce.app"))
+      .unique();
+    if (demo) {
+      const hasWishlist = await ctx.db
+        .query("wishlistItems")
+        .withIndex("by_user", (q: any) => q.eq("userEmail", demo.email))
+        .first();
+      if (!hasWishlist) {
+        for (const productId of [1, 3, 4]) {
+          await ctx.db.insert("wishlistItems", { userEmail: demo.email, productId, createdAt: Date.now() });
+        }
+        counts.demoWishlist = 3;
+      }
+      const hasLikes = await ctx.db
+        .query("cardLikes")
+        .withIndex("by_user", (q: any) => q.eq("userEmail", demo.email))
+        .first();
+      if (!hasLikes) {
+        await ctx.db.insert("cardLikes", { userEmail: demo.email, cardId: 1, createdAt: Date.now() });
+        counts.demoLikes = 1;
+      }
+      const hasVotes = await ctx.db
+        .query("requestVotes")
+        .withIndex("by_user", (q: any) => q.eq("userEmail", demo.email))
+        .first();
+      if (!hasVotes) {
+        await ctx.db.insert("requestVotes", { userEmail: demo.email, requestId: 1, createdAt: Date.now() });
+        counts.demoVotes = 1;
+      }
+    }
+
+    const seeded = Object.values(counts).some((c) => c > 0);
+    return { seeded, counts };
   },
 });

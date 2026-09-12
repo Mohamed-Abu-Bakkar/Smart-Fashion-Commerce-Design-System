@@ -9,7 +9,8 @@ import {
   Filter, Eye, RefreshCw, ChevronDown, Package,
   Ruler, Users, ThumbsUp, Layers, Mail, Lock,
   Clock, Inbox, Store, Shirt, ArrowUpRight,
-  Sun, Moon, Monitor,
+  Sun, Moon, Monitor, Wallet, Banknote,
+  MoveVertical, MoveHorizontal, ArrowRight, Circle, NotebookPen,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import {
@@ -22,10 +23,16 @@ import {
   FALLBACK_PRODUCTS as PRODUCTS,
   FALLBACK_REVENUE as REVENUE_DATA,
   FALLBACK_SIZES as SIZE_DEMAND,
+  FALLBACK_REVIEWS,
   useShopData,
+  useWishlist,
+  useVotes,
   type Product,
+  type ProductReview,
 } from "./data";
 import { useAuth, authErrorMessage, initialsOf, type SessionUser } from "./auth";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
 type AppState = "splash" | "onboarding" | "login" | "otp" | "main";
 type MainTab = "home" | "discover" | "ai" | "wishlist" | "profile";
 type Screen =
@@ -93,6 +100,39 @@ function AppearanceSection() {
   );
 }
 
+// ─── PWA INSTALL ─────────────────────────────────────────────────────────────
+
+function usePWAInstall() {
+  const [deferred, setDeferred] = useState<any>(null);
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault();
+      setDeferred(e);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+  return {
+    canInstall: deferred !== null,
+    install: () => deferred?.prompt(),
+  };
+}
+
+function InstallAppCard() {
+  const { canInstall, install } = usePWAInstall();
+  if (!canInstall) return null;
+  return (
+    <div className="mx-5 mb-5 bg-gradient-to-r from-[#7B61FF]/12 to-transparent border border-[#7B61FF]/20 rounded-2xl p-3.5 flex items-center gap-3">
+      <img src="/icons/brand-mark.png" alt="Install SF Commerce" className="w-11 h-11 rounded-[13px] flex-shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-foreground text-xs font-semibold">Install the app</p>
+        <p className="text-muted-foreground text-[10px]">Faster access, offline shopping</p>
+      </div>
+      <button onClick={install} className="bg-[#7B61FF] text-white text-xs font-bold px-3.5 py-2 rounded-xl whitespace-nowrap">Install</button>
+    </div>
+  );
+}
+
 // ─── PRODUCT CARD ────────────────────────────────────────────────────────────
 
 function PCard({ p, onTap, wishlisted, onWishlist, width = "160px" }: {
@@ -112,7 +152,7 @@ function PCard({ p, onTap, wishlisted, onWishlist, width = "160px" }: {
           {p.isTrending && <span className="bg-amber-500 text-black text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">Hot</span>}
         </div>
         <div className="absolute top-2 right-2 bg-[#7B61FF] rounded-full w-9 h-9 flex items-center justify-center">
-          <span className="text-foreground text-[10px] font-bold">-{p.discount}%</span>
+          <span className="text-white text-[10px] font-bold">-{p.discount}%</span>
         </div>
         <button onClick={(e) => { e.stopPropagation(); onWishlist(); }}
           className="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center">
@@ -146,9 +186,8 @@ function SplashScreen() {
         <div className="w-80 h-80 rounded-full bg-[#7B61FF]/15 blur-[100px]" />
       </div>
       <div className="relative z-10 flex flex-col items-center gap-5">
-        <div className="w-24 h-24 rounded-[32px] bg-gradient-to-br from-[#7B61FF] to-[#3a2ab5] flex items-center justify-center shadow-2xl shadow-[#7B61FF]/30">
-          <Sparkles size={40} className="text-white" />
-        </div>
+        <img src="/icons/android/launchericon-192x192.png" alt="SF Commerce"
+          className="w-24 h-24 rounded-[28px] shadow-2xl shadow-black/20" />
         <div className="text-center">
           <h1 className="text-foreground text-3xl font-bold tracking-tight" style={PP}>Smart Fashion</h1>
           <p className="text-[#7B61FF] text-sm font-semibold tracking-[0.3em] uppercase mt-1">Commerce</p>
@@ -305,9 +344,8 @@ function LoginScreen({ onAuthenticated, onSignupStarted, onGuest }: {
         <div className="absolute inset-0 bg-gradient-to-b from-transparent to-background" />
         <div className="absolute bottom-6 left-6">
           <div className="flex items-center gap-2 mb-1">
-            <div className="w-7 h-7 rounded-xl bg-[#7B61FF] flex items-center justify-center">
-              <Sparkles size={14} className="text-white" />
-            </div>
+            <img src="/icons/brand-mark.png" alt="SF Commerce"
+              className="w-7 h-7 rounded-[9px]" />
             <span className="text-foreground font-bold text-sm" style={PP}>Smart Fashion</span>
           </div>
           <p className="text-muted-foreground text-xs">Premium AI-powered shopping</p>
@@ -508,7 +546,7 @@ function OTPScreen({ email, demoCode, resendTick, onVerified, onBack, onResend }
 
       <div className="bg-amber-500/10 border border-amber-500/25 rounded-2xl px-4 py-3 mb-6 flex items-center gap-3">
         <Mail size={15} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
-        <p className="text-xs text-muted-foreground">Demo mode — no email service connected. Your code is <span className="text-foreground font-bold text-sm tracking-widest">{demoCode}</span></p>
+        <p className="text-xs text-muted-foreground">Demo mode — no email service connected. Tap the code to fill it: <button onClick={() => fillFrom(demoCode, 0)} className="text-foreground font-bold text-sm tracking-widest underline decoration-dotted underline-offset-2">{demoCode}</button></p>
       </div>
 
       {error !== "" && (
@@ -566,6 +604,8 @@ function HomeScreen({ onProduct, wishlisted, onWishlist, cartCount, onCart, onNa
   onNav: (s: Screen) => void; userName: string;
 }) {
   const PRODUCTS = useShopData().products; // live (Convex) with mock fallback
+  const { votingCards } = useShopData(); // live community leaderboard
+  const picks = [...votingCards].sort((a, b) => b.likes - a.likes).slice(0, 2);
   const [timeLeft, setTimeLeft] = useState({ h: 2, m: 47, s: 33 });
   const [activeCat, setActiveCat] = useState("All");
   const cats = ["All", "Outerwear", "Hoodies", "Dresses", "Footwear", "T-Shirts", "Formal"];
@@ -757,23 +797,20 @@ function HomeScreen({ onProduct, wishlisted, onWishlist, cartCount, onCart, onNa
               </div>
               <button onClick={() => onNav("community")} className="text-[#7B61FF] text-[10px] font-semibold">See all</button>
             </div>
-            {[
-              { user: "Riya S.", vote: 847, img: PRODUCTS[3].img, name: "Phantom Runner", brand: "Motion Lab" },
-              { user: "Arjun K.", vote: 612, img: PRODUCTS[1].img, name: "Void Hoodie", brand: "Monochrome" },
-            ].map((item, i) => (
-              <div key={i} className="flex items-center gap-3 py-2.5 border-b border-border last:border-0">
+            {picks.map((item) => (
+              <div key={item.id} className="flex items-center gap-3 py-2.5 border-b border-border last:border-0">
                 <div className="w-12 h-12 rounded-xl overflow-hidden bg-secondary flex-shrink-0">
-                  <img src={item.img} alt={item.name} className="w-full h-full object-cover" />
+                  <img src={item.img} alt={item.title} className="w-full h-full object-cover" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-foreground text-xs font-semibold truncate">{item.name}</p>
-                  <p className="text-muted-foreground text-[10px]">{item.brand} · by {item.user}</p>
+                  <p className="text-foreground text-xs font-semibold truncate">{item.title}</p>
+                  <p className="text-muted-foreground text-[10px]">{item.designer} · by {item.designer}</p>
                 </div>
                 <div className="flex flex-col items-center gap-0.5">
-                  <button className="w-8 h-8 rounded-xl bg-[#7B61FF]/10 border border-[#7B61FF]/20 flex items-center justify-center">
+                  <button onClick={() => onNav("community")} className="w-8 h-8 rounded-xl bg-[#7B61FF]/10 border border-[#7B61FF]/20 flex items-center justify-center">
                     <Heart size={12} className="text-[#7B61FF]" />
                   </button>
-                  <span className="text-[9px] text-muted-foreground">{item.vote}</span>
+                  <span className="text-[9px] text-muted-foreground">{item.likes.toLocaleString()}</span>
                 </div>
               </div>
             ))}
@@ -1056,32 +1093,33 @@ function WishlistScreen({ products, onProduct, onRemove }: {
 function ProfileScreen({ onNav, user, onSignOut }: {
   onNav: (s: Screen) => void; user: SessionUser; onSignOut: () => void;
 }) {
+  const { ids: wishlistIds } = useWishlist(); // live per-user count
   const sections = [
     {
       title: "Shopping",
       items: [
-        { icon: "📦", label: "My Orders", sub: "12 orders", action: "orders" as Screen },
-        { icon: "❤️", label: "Wishlist", sub: "3 saved", action: null },
-        { icon: "📐", label: "Custom Size", sub: "Add measurements", action: "custom-size" as Screen },
-        { icon: "📍", label: "Addresses", sub: "2 saved", action: null },
-        { icon: "💳", label: "Payment Methods", sub: "UPI, Card", action: null },
+        { icon: Package, label: "My Orders", sub: "12 orders", action: "orders" as Screen },
+        { icon: Heart, label: "Wishlist", sub: `${wishlistIds.length} saved`, action: null },
+        { icon: Ruler, label: "Custom Size", sub: "Add measurements", action: "custom-size" as Screen },
+        { icon: MapPin, label: "Addresses", sub: "2 saved", action: null },
+        { icon: CreditCard, label: "Payment Methods", sub: "UPI, Card", action: null },
       ],
     },
     {
       title: "Style & AI",
       items: [
-        { icon: "✨", label: "AI Preferences", sub: "Dark minimal", action: null },
-        { icon: "👗", label: "My Wardrobe", sub: "12 items", action: "wardrobe" as Screen },
-        { icon: "🏪", label: "Retailer Dashboard", sub: "Studio Noir owner", action: "retailer" as Screen },
-        { icon: "👁️", label: "Recently Viewed", sub: "14 products", action: null },
+        { icon: Sparkles, label: "AI Preferences", sub: "Dark minimal", action: null },
+        { icon: Shirt, label: "My Wardrobe", sub: "12 items", action: "wardrobe" as Screen },
+        { icon: Store, label: "Retailer Dashboard", sub: "Studio Noir owner", action: "retailer" as Screen },
+        { icon: Eye, label: "Recently Viewed", sub: "14 products", action: null },
       ],
     },
     {
       title: "Account",
       items: [
-        { icon: "🔔", label: "Notifications", sub: "3 unread", action: "notifications" as Screen },
-        { icon: "⚙️", label: "Settings", sub: null, action: null },
-        { icon: "🚪", label: "Sign Out", sub: null, action: null, danger: true },
+        { icon: Bell, label: "Notifications", sub: "3 unread", action: "notifications" as Screen },
+        { icon: Settings, label: "Settings", sub: null, action: null },
+        { icon: LogOut, label: "Sign Out", sub: null, action: null, danger: true },
       ],
     },
   ];
@@ -1105,7 +1143,7 @@ function ProfileScreen({ onNav, user, onSignOut }: {
         </div>
         <div className="mx-5 bg-card border border-border rounded-2xl p-4 mb-5">
           <div className="grid grid-cols-3 divide-x divide-border">
-            {[{ label: "Orders", value: "12" }, { label: "Wishlist", value: "3" }, { label: "Reviews", value: "7" }].map(({ label, value }) => (
+            {[{ label: "Orders", value: "12" }, { label: "Wishlist", value: `${wishlistIds.length}` }, { label: "Reviews", value: "7" }].map(({ label, value }) => (
               <div key={label} className="flex flex-col items-center px-4">
                 <span className="text-foreground font-bold text-2xl" style={PP}>{value}</span>
                 <span className="text-muted-foreground text-[10px]">{label}</span>
@@ -1120,25 +1158,31 @@ function ProfileScreen({ onNav, user, onSignOut }: {
             <p className="text-muted-foreground text-[10px]">Studio Noir · Monochrome · Atelier Void</p>
           </div>
         </div>
+        <InstallAppCard />
         <div className="px-5 pb-6 space-y-5">
           <AppearanceSection />
           {sections.map((section) => (
             <div key={section.title}>
               <p className="text-muted-foreground/70 text-[9px] font-bold tracking-[0.15em] uppercase mb-2 px-1">{section.title}</p>
               <div className="bg-card border border-border rounded-2xl overflow-hidden">
-                {section.items.map((item, i) => (
+                {section.items.map((item, i) => {
+                  const ItemIcon = item.icon;
+                  return (
                   <button key={item.label}
                     onClick={() => {
                       if (item.label === "Sign Out") onSignOut();
                       else if (item.action) onNav(item.action);
                     }}
                     className={`w-full flex items-center gap-3 px-4 py-3.5 hover:bg-foreground/[0.03] transition-colors text-left ${i < section.items.length - 1 ? "border-b border-border" : ""}`}>
-                    <span className="text-base w-5 text-center">{item.icon}</span>
+                    <span className="w-8 h-8 rounded-xl bg-secondary border border-border flex items-center justify-center flex-shrink-0">
+                      <ItemIcon size={15} className={item.danger ? "text-red-400" : "text-muted-foreground"} />
+                    </span>
                     <span className={`flex-1 text-sm font-medium ${item.danger ? "text-red-400" : "text-foreground"}`}>{item.label}</span>
                     {item.sub && <span className="text-muted-foreground/70 text-[10px]">{item.sub}</span>}
                     {!item.danger && <ChevronRight size={13} className="text-muted-foreground/30" />}
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))}
@@ -1177,11 +1221,9 @@ function ProductDetailScreen({ p, onBack, wishlisted, onWishlist, onAddToCart, o
     setTimeout(() => setAdded(false), 2200);
   };
 
-  const REVIEWS = [
-    { name: "Riya S.", rating: 5, date: "Jan 10", text: "Absolutely stunning quality. The fit is perfect and the fabric feels premium.", avatar: "RS" },
-    { name: "Arjun K.", rating: 4, date: "Jan 7", text: "Great product, slightly oversized but that's the aesthetic. Highly recommend.", avatar: "AK" },
-    { name: "Priya M.", rating: 5, date: "Dec 29", text: "Worth every rupee. The dark colorway is exactly as shown in photos.", avatar: "PM" },
-  ];
+  const { live: shopLive } = useShopData();
+  const REVIEWS: ProductReview[] =
+    useQuery(api.shop.reviewsForProduct, shopLive ? { productId: p.id } : "skip") ?? FALLBACK_REVIEWS;
 
   return (
     <div className="h-full flex flex-col">
@@ -1322,14 +1364,14 @@ function ProductDetailScreen({ p, onBack, wishlisted, onWishlist, onAddToCart, o
           ) : (
             <div className="space-y-3">
               {REVIEWS.map((r) => (
-                <div key={r.name} className="bg-card border border-border rounded-2xl p-4">
+                <div key={r.author} className="bg-card border border-border rounded-2xl p-4">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-8 h-8 rounded-full bg-[#7B61FF]/20 flex items-center justify-center flex-shrink-0">
                       <span className="text-[#7B61FF] text-[10px] font-bold">{r.avatar}</span>
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
-                        <span className="text-foreground text-xs font-semibold">{r.name}</span>
+                        <span className="text-foreground text-xs font-semibold">{r.author}</span>
                         <span className="text-muted-foreground/70 text-[10px]">{r.date}</span>
                       </div>
                       <StarRating rating={r.rating} />
@@ -1491,7 +1533,7 @@ function BargainingScreen({ p, onBack }: { p: Product; onBack: () => void }) {
             )}
             {stage === "pending" && (
               <div className="flex gap-2">
-                <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center flex-shrink-0"><span className="text-sm">🏪</span></div>
+                <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center flex-shrink-0"><Store size={13} className="text-muted-foreground" /></div>
                 <div className="bg-secondary border border-border rounded-2xl rounded-bl-sm px-4 py-3">
                   <div className="flex gap-1">{[0, 1, 2].map((i) => <div key={i} className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />)}</div>
                 </div>
@@ -1501,7 +1543,7 @@ function BargainingScreen({ p, onBack }: { p: Product; onBack: () => void }) {
             {stage === "pending" && (() => { setTimeout(() => setStage("counter"), 2000); return null; })()}
             {(stage === "counter" || stage === "accepted") && (
               <div className="flex gap-2">
-                <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center flex-shrink-0"><span className="text-sm">🏪</span></div>
+                <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center flex-shrink-0"><Store size={13} className="text-muted-foreground" /></div>
                 <div className="bg-secondary border border-border rounded-2xl rounded-bl-sm px-4 py-3 flex-1">
                   <p className="text-secondary-foreground text-xs leading-relaxed">
                     Thanks! My best price is <span className="text-foreground font-bold">{fmt(counterOffer)}</span> — final offer. Shall we make it a deal? 🤝
@@ -1659,13 +1701,18 @@ function CheckoutScreen({ onBack, onSuccess, userName }: { onBack: () => void; o
           </div>
           <div className="bg-card border border-border rounded-2xl p-4">
             <div className="flex items-center gap-2 mb-3"><CreditCard size={14} className="text-[#7B61FF]" /><p className="text-foreground font-semibold text-sm">Payment</p></div>
-            {[{ id: "upi", label: "UPI", sub: "GPay, PhonePe, Paytm", icon: "⚡" }, { id: "card", label: "Credit / Debit Card", sub: "Visa, Mastercard, RuPay", icon: "💳" }, { id: "wallet", label: "Wallet", sub: "₹2,400 available", icon: "👛" }, { id: "cod", label: "Cash on Delivery", sub: "Pay at doorstep", icon: "💵" }].map((m) => (
+            {[{ id: "upi", label: "UPI", sub: "GPay, PhonePe, Paytm", icon: Zap }, { id: "card", label: "Credit / Debit Card", sub: "Visa, Mastercard, RuPay", icon: CreditCard }, { id: "wallet", label: "Wallet", sub: "₹2,400 available", icon: Wallet }, { id: "cod", label: "Cash on Delivery", sub: "Pay at doorstep", icon: Banknote }].map((m) => {
+              const PayIcon = m.icon;
+              return (
               <div key={m.id} onClick={() => setPayment(m.id)} className="flex items-center gap-3 py-2.5 border-b border-border last:border-0 cursor-pointer">
                 <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${payment === m.id ? "border-[#7B61FF]" : "border-muted-foreground/40"}`}>{payment === m.id && <div className="w-2 h-2 rounded-full bg-[#7B61FF]" />}</div>
-                <span className="text-base">{m.icon}</span>
+                <span className="w-8 h-8 rounded-xl bg-secondary border border-border flex items-center justify-center flex-shrink-0">
+                  <PayIcon size={14} className={payment === m.id ? "text-[#7B61FF]" : "text-muted-foreground"} />
+                </span>
                 <div className="flex-1"><p className="text-foreground text-xs font-semibold">{m.label}</p><p className="text-muted-foreground text-[10px]">{m.sub}</p></div>
               </div>
-            ))}
+              );
+            })}
           </div>
           <div className="bg-card border border-border rounded-2xl p-4 space-y-2">
             <p className="text-foreground font-semibold text-sm mb-3">Order Total</p>
@@ -1798,11 +1845,11 @@ function CustomSizeScreen({ onBack }: { onBack: () => void }) {
   const [saved, setSaved] = useState(false);
 
   const fields = [
-    { key: "height", label: "Height", unit: "cm", icon: "↕" },
-    { key: "chest", label: "Chest", unit: "cm", icon: "◉" },
-    { key: "waist", label: "Waist", unit: "cm", icon: "○" },
-    { key: "shoulder", label: "Shoulder Width", unit: "cm", icon: "↔" },
-    { key: "sleeve", label: "Sleeve Length", unit: "cm", icon: "➡" },
+    { key: "height", label: "Height", unit: "cm", icon: MoveVertical },
+    { key: "chest", label: "Chest", unit: "cm", icon: Scan },
+    { key: "waist", label: "Waist", unit: "cm", icon: Circle },
+    { key: "shoulder", label: "Shoulder Width", unit: "cm", icon: MoveHorizontal },
+    { key: "sleeve", label: "Sleeve Length", unit: "cm", icon: ArrowRight },
   ] as const;
 
   return (
@@ -1854,9 +1901,11 @@ function CustomSizeScreen({ onBack }: { onBack: () => void }) {
                 <Ruler size={15} className="text-[#7B61FF]" />
                 <p className="text-foreground font-semibold text-sm">Your Measurements</p>
               </div>
-              {fields.map(({ key, label, unit, icon }) => (
+              {fields.map(({ key, label, unit, icon: FieldIcon }) => (
                 <div key={key} className="flex items-center gap-3 bg-secondary border border-border rounded-xl px-4 py-3">
-                  <span className="text-muted-foreground text-base w-5 text-center">{icon}</span>
+                  <span className="w-8 h-8 rounded-xl bg-card border border-border flex items-center justify-center flex-shrink-0">
+                    <FieldIcon size={14} className="text-muted-foreground" />
+                  </span>
                   <span className="text-muted-foreground text-xs flex-1">{label}</span>
                   <input type="number"
                     value={measurements[key]}
@@ -1866,7 +1915,7 @@ function CustomSizeScreen({ onBack }: { onBack: () => void }) {
                 </div>
               ))}
               <div className="flex items-center gap-3 bg-secondary border border-border rounded-xl px-4 py-3">
-                <span className="text-muted-foreground text-base">📝</span>
+                <NotebookPen size={15} className="text-muted-foreground flex-shrink-0" />
                 <input placeholder="Special notes (optional)..." className="flex-1 bg-transparent text-foreground text-sm outline-none placeholder:text-muted-foreground/60" />
               </div>
             </div>
@@ -1908,7 +1957,7 @@ function CustomSizeScreen({ onBack }: { onBack: () => void }) {
 
 function CommunityScreen({ onBack }: { onBack: () => void }) {
   const [tab, setTab] = useState<"requests" | "voting">("requests");
-  const [liked, setLiked] = useState<number[]>([]);
+  const { likedCards, votedRequests, toggleCardLike, toggleRequestVote } = useVotes(); // per-user, DB-backed
   const { collectionRequests: requests, votingCards } = useShopData(); // live with mock fallback
 
   return (
@@ -1950,8 +1999,10 @@ function CommunityScreen({ onBack }: { onBack: () => void }) {
                 </div>
               </div>
               <div className="flex border-t border-border">
-                <button className="flex-1 py-2.5 flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-[#7B61FF] transition-colors">
-                  <ThumbsUp size={12} />Vote
+                <button onClick={() => toggleRequestVote(r.id)}
+                  className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 text-xs transition-colors ${votedRequests.includes(r.id) ? "text-[#7B61FF] font-semibold" : "text-muted-foreground hover:text-[#7B61FF]"}`}>
+                  <ThumbsUp size={12} className={votedRequests.includes(r.id) ? "fill-[#7B61FF]/20" : ""} />
+                  {votedRequests.includes(r.id) ? "Voted" : "Vote"}
                 </button>
                 <div className="w-px bg-foreground/[0.04]" />
                 <button className="flex-1 py-2.5 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
@@ -1982,17 +2033,20 @@ function CommunityScreen({ onBack }: { onBack: () => void }) {
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <button onClick={() => setLiked((p) => p.includes(c.id) ? p.filter((i) => i !== c.id) : [...p, c.id])}
+                    <button onClick={() => toggleCardLike(c.id)}
                       className="flex items-center gap-1">
-                      <Heart size={14} className={liked.includes(c.id) ? "fill-[#7B61FF] text-[#7B61FF]" : "text-muted-foreground"} />
-                      <span className="text-muted-foreground text-xs">{(c.likes + (liked.includes(c.id) ? 1 : 0)).toLocaleString()}</span>
+                      <Heart size={14} className={likedCards.includes(c.id) ? "fill-[#7B61FF] text-[#7B61FF]" : "text-muted-foreground"} />
+                      <span className="text-muted-foreground text-xs">{c.likes.toLocaleString()}</span>
                     </button>
                     <button className="flex items-center gap-1">
                       <MessageCircle size={14} className="text-muted-foreground" />
                       <span className="text-muted-foreground text-xs">{c.comments}</span>
                     </button>
                   </div>
-                  <button className="bg-[#7B61FF] text-white text-xs font-bold px-3 py-1.5 rounded-full">Vote</button>
+                  <button onClick={() => toggleCardLike(c.id)}
+                    className={`text-xs font-bold px-3 py-1.5 rounded-full transition-all ${likedCards.includes(c.id) ? "bg-secondary text-muted-foreground border border-border" : "bg-[#7B61FF] text-white"}`}>
+                    {likedCards.includes(c.id) ? "Voted" : "Vote"}
+                  </button>
                 </div>
               </div>
             </div>
@@ -2007,11 +2061,12 @@ function CommunityScreen({ onBack }: { onBack: () => void }) {
 
 function OutfitBuilderScreen({ onBack, onProduct }: { onBack: () => void; onProduct: (p: Product) => void }) {
   const PRODUCTS = useShopData().products; // live (Convex) with mock fallback
+  const byId = (id: number, fb: number) => PRODUCTS.find((p) => p.id === id) ?? PRODUCTS[fb];
   const slots = [
-    { label: "Top", icon: Shirt, product: PRODUCTS[1], color: "#7B61FF" },
-    { label: "Bottom", icon: Layers, product: PRODUCTS[4], color: "#10b981" },
-    { label: "Shoes", icon: Zap, product: PRODUCTS[3], color: "#f59e0b" },
-    { label: "Jacket", icon: Shirt, product: PRODUCTS[0], color: "#ec4899" },
+    { label: "Top", icon: Shirt, product: byId(2, 1), color: "#7B61FF" },
+    { label: "Bottom", icon: Layers, product: byId(5, 4), color: "#10b981" },
+    { label: "Shoes", icon: Zap, product: byId(4, 3), color: "#f59e0b" },
+    { label: "Jacket", icon: Shirt, product: byId(1, 0), color: "#ec4899" },
   ];
   const totalPrice = slots.reduce((s, sl) => s + sl.product.price, 0);
 
@@ -2211,11 +2266,15 @@ function WardrobeScreen({ onBack, onProduct }: { onBack: () => void; onProduct: 
 
 function RetailerDashboard({ onBack }: { onBack: () => void }) {
   const { products: PRODUCTS, revenue: REVENUE_DATA, sizeDemand: SIZE_DEMAND } = useShopData(); // live with mock fallback
+  const totalRev = REVENUE_DATA.reduce((s, r) => s + r.rev, 0);
+  const totalOrders = REVENUE_DATA.reduce((s, r) => s + r.orders, 0);
+  const totalReviews = PRODUCTS.reduce((s, p) => s + p.reviews, 0);
+  const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
   const stats = [
-    { label: "Revenue", value: "₹1,44,200", change: "+18%", up: true },
-    { label: "Orders", value: "401", change: "+12%", up: true },
+    { label: "Revenue", value: inr(totalRev), change: "+18%", up: true },
+    { label: "Orders", value: `${totalOrders}`, change: "+12%", up: true },
     { label: "Returns", value: "23", change: "-4%", up: false },
-    { label: "Wishlisted", value: "1,892", change: "+31%", up: true },
+    { label: "Wishlisted", value: totalReviews.toLocaleString("en-IN"), change: "+31%", up: true },
   ];
 
   const insights = [
@@ -2256,7 +2315,7 @@ function RetailerDashboard({ onBack }: { onBack: () => void }) {
           <div className="bg-card border border-border rounded-2xl p-4">
             <div className="flex items-center justify-between mb-3">
               <p className="text-foreground font-semibold text-sm">Weekly Revenue</p>
-              <span className="text-[#7B61FF] text-xs font-bold">₹1,44,200 total</span>
+              <span className="text-[#7B61FF] text-xs font-bold">{inr(totalRev)} total</span>
             </div>
             <ResponsiveContainer width="100%" height={120}>
               <AreaChart data={REVENUE_DATA}>
@@ -2360,7 +2419,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<MainTab>("home");
   const [selectedProduct, setSelectedProduct] = useState<Product>(PRODUCTS[0]);
   const [cartItems, setCartItems] = useState<Product[]>([]);
-  const [wishlisted, setWishlisted] = useState<number[]>([1, 3, 4]);
+  const { ids: wishlisted, toggle: toggleWishlist } = useWishlist(); // per-user, DB-backed
   const [pending, setPending] = useState<{ email: string; code: string } | null>(null);
   const [resendTick, setResendTick] = useState(0);
 
@@ -2384,9 +2443,7 @@ export default function App() {
     else setScreen(activeTab);
   };
 
-  const openProduct = (p: Product) => { setSelectedProduct(p); setScreen("product"); };
-  const toggleWishlist = (id: number) =>
-    setWishlisted((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
+    const openProduct = (p: Product) => { setSelectedProduct(p); setScreen("product"); };
   const addToCart = (p: Product) =>
     setCartItems((prev) => (prev.find((i) => i.id === p.id) ? prev : [...prev, p]));
   const handleTab = (tab: MainTab) => { setActiveTab(tab); setScreen(tab); };

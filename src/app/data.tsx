@@ -1,7 +1,8 @@
-import { createContext, useContext, useMemo, type ReactNode } from "react";
-import { ConvexProvider, ConvexReactClient, useQuery } from "convex/react";
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { ConvexProvider, ConvexReactClient, useMutation, useQuery } from "convex/react";
 import { Tag, Package, Sparkles, Users, type LucideIcon } from "lucide-react";
 import { api } from "../../convex/_generated/api";
+import { useAuth } from "./auth";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,14 @@ export type NotificationItem = {
   sub: string;
   time: string;
   unread: boolean;
+};
+
+export type ProductReview = {
+  author: string;
+  rating: number;
+  date: string;
+  text: string;
+  avatar: string;
 };
 
 export type NotificationGroup = {
@@ -183,8 +192,7 @@ export const FALLBACK_VOTING: VotingCard[] = [
   },
 ];
 
-export const FALLBACK_NOTIFICATIONS: NotificationGroup[] = [
-  {
+export const FALLBACK_NOTIFICATIONS: NotificationGroup[] = [  {
     title: "Price Alerts", color: "#f59e0b", icon: Tag,
     items: [
       { title: "Shadow Bomber dropped 8%", sub: "Now ₹3,299 · Was ₹3,599", time: "2h ago", unread: true },
@@ -214,8 +222,13 @@ export const FALLBACK_NOTIFICATIONS: NotificationGroup[] = [
   },
 ];
 
-// ─── SHOP DATA CONTEXT ───────────────────────────────────────────────────────
+export const FALLBACK_REVIEWS: ProductReview[] = [
+  { author: "Riya S.", rating: 5, date: "Jan 10", text: "Absolutely stunning quality. The fit is perfect and the fabric feels premium.", avatar: "RS" },
+  { author: "Arjun K.", rating: 4, date: "Jan 7", text: "Great product, slightly oversized but that's the aesthetic. Highly recommend.", avatar: "AK" },
+  { author: "Priya M.", rating: 5, date: "Dec 29", text: "Worth every rupee. The dark colorway is exactly as shown in photos.", avatar: "PM" },
+];
 
+// ─── SHOP DATA CONTEXT ───────────────────────────────────────────────────────
 export type ShopData = {
   products: Product[];
   revenue: RevenueRow[];
@@ -261,13 +274,14 @@ const FALLBACK_DATA: ShopData = {
 
 const ShopDataContext = createContext<ShopData>(FALLBACK_DATA);
 
-function LiveShopData({ children }: { children: ReactNode }) {
-  const products = useQuery(api.shop.listProducts) ?? FALLBACK_PRODUCTS;
-  const revenue = useQuery(api.shop.revenueWeekly) ?? FALLBACK_REVENUE;
-  const sizeDemand = useQuery(api.shop.sizeDemand) ?? FALLBACK_SIZES;
-  const collectionRequests = useQuery(api.shop.collectionRequests) ?? FALLBACK_REQUESTS;
-  const votingCards = useQuery(api.shop.votingCards) ?? FALLBACK_VOTING;
-  const flatNotifs = useQuery(api.shop.notifications);
+function LiveShopData({ children, live }: { children: ReactNode; live: boolean }) {
+  const skip = live ? undefined : ("skip" as const);
+  const products = useQuery(api.shop.listProducts, skip as any) ?? FALLBACK_PRODUCTS;
+  const revenue = useQuery(api.shop.revenueWeekly, skip as any) ?? FALLBACK_REVENUE;
+  const sizeDemand = useQuery(api.shop.sizeDemand, skip as any) ?? FALLBACK_SIZES;
+  const collectionRequests = useQuery(api.shop.collectionRequests, skip as any) ?? FALLBACK_REQUESTS;
+  const votingCards = useQuery(api.shop.votingCards, skip as any) ?? FALLBACK_VOTING;
+  const flatNotifs = useQuery(api.shop.notifications, skip as any);
 
   const value = useMemo<ShopData>(
     () => ({
@@ -277,9 +291,9 @@ function LiveShopData({ children }: { children: ReactNode }) {
       collectionRequests,
       votingCards,
       notificationGroups: flatNotifs ? groupNotifications(flatNotifs) : FALLBACK_NOTIFICATIONS,
-      live: true,
+      live,
     }),
-    [products, revenue, sizeDemand, collectionRequests, votingCards, flatNotifs],
+    [products, revenue, sizeDemand, collectionRequests, votingCards, flatNotifs, live],
   );
 
   return <ShopDataContext.Provider value={value}>{children}</ShopDataContext.Provider>;
@@ -287,20 +301,95 @@ function LiveShopData({ children }: { children: ReactNode }) {
 
 export function ShopDataProvider({ children }: { children: ReactNode }) {
   const url = import.meta.env.VITE_CONVEX_URL as string | undefined;
+  // Always provide a client so hooks are safe; queries are skipped when unconfigured
+  // and the UI falls back to local mock data.
   const client = useMemo(
-    () => (url ? new ConvexReactClient(url) : null),
+    () => new ConvexReactClient(url ?? "https://placeholder.convex.cloud"),
     [url],
   );
-  if (!client) {
-    return <ShopDataContext.Provider value={FALLBACK_DATA}>{children}</ShopDataContext.Provider>;
-  }
   return (
     <ConvexProvider client={client}>
-      <LiveShopData>{children}</LiveShopData>
+      <LiveShopData live={!!url}>{children}</LiveShopData>
     </ConvexProvider>
   );
 }
 
 export function useShopData(): ShopData {
   return useContext(ShopDataContext);
+}
+
+const GUEST_WISHLIST = [1, 3, 4];
+
+/** Per-user wishlist ids. Guests get local-only state; signed-in users get live DB rows. */
+export function useWishlist() {
+  const { user } = useAuth();
+  const email = user && !user.guest ? user.email : null;
+  const liveIds = useQuery(api.shop.wishlistIds, email ? { userEmail: email } : "skip");
+  const toggleLive = useMutation(api.shop.toggleWishlist);
+  const [guestIds, setGuestIds] = useState<number[]>(GUEST_WISHLIST);
+
+  const toggleGuest = useCallback((id: number) => {
+    setGuestIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
+  }, []);
+
+  const toggle = useCallback(
+    (id: number) => {
+      if (!email) {
+        toggleGuest(id);
+        return Promise.resolve({ wishlisted: !guestIds.includes(id) });
+      }
+      return toggleLive({ userEmail: email, productId: id });
+    },
+    [email, toggleLive, toggleGuest, guestIds],
+  );
+
+  return useMemo(
+    () => ({ ids: email ? (liveIds ?? []) : guestIds, toggle, live: !!email }),
+    [email, liveIds, guestIds, toggle],
+  );
+}
+
+/** Per-user community votes & card likes. Guests get local-only state. */
+export function useVotes() {
+  const { user } = useAuth();
+  const email = user && !user.guest ? user.email : null;
+  const liveLiked = useQuery(api.shop.likedCardIds, email ? { userEmail: email } : "skip");
+  const liveVoted = useQuery(api.shop.votedRequestIds, email ? { userEmail: email } : "skip");
+  const toggleLikeLive = useMutation(api.shop.toggleCardLike);
+  const toggleVoteLive = useMutation(api.shop.toggleRequestVote);
+  const [guestLiked, setGuestLiked] = useState<number[]>([]);
+  const [guestVoted, setGuestVoted] = useState<number[]>([]);
+
+  const toggleCardLike = useCallback(
+    (cardId: number) => {
+      if (!email) {
+        setGuestLiked((prev) => (prev.includes(cardId) ? prev.filter((i) => i !== cardId) : [...prev, cardId]));
+        return Promise.resolve({ liked: !guestLiked.includes(cardId) });
+      }
+      return toggleLikeLive({ userEmail: email, cardId });
+    },
+    [email, toggleLikeLive, guestLiked],
+  );
+
+  const toggleRequestVote = useCallback(
+    (requestId: number) => {
+      if (!email) {
+        setGuestVoted((prev) => (prev.includes(requestId) ? prev.filter((i) => i !== requestId) : [...prev, requestId]));
+        return Promise.resolve({ voted: !guestVoted.includes(requestId) });
+      }
+      return toggleVoteLive({ userEmail: email, requestId });
+    },
+    [email, toggleVoteLive, guestVoted],
+  );
+
+  return useMemo(
+    () => ({
+      likedCards: email ? (liveLiked ?? []) : guestLiked,
+      votedRequests: email ? (liveVoted ?? []) : guestVoted,
+      toggleCardLike,
+      toggleRequestVote,
+      live: !!email,
+    }),
+    [email, liveLiked, liveVoted, guestLiked, guestVoted, toggleCardLike, toggleRequestVote],
+  );
 }

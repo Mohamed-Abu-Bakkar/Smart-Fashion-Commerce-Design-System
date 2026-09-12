@@ -83,4 +83,32 @@ export default defineSchema({
     expiresAt: v.number(),
     attempts: v.number(),
   }).index("by_email", ["email"]),
+
+  wishlistItems: defineTable({
+    userEmail: v.string(), // lowercase
+    productId: v.number(),
+    createdAt: v.number(),
+  }).index("by_user", ["userEmail"]),
+
+  cardLikes: defineTable({
+    userEmail: v.string(), // lowercase
+    cardId: v.number(), // votingCards.id
+    createdAt: v.number(),
+  }).index("by_user", ["userEmail"]),
+
+  requestVotes: defineTable({
+    userEmail: v.string(), // lowercase
+    requestId: v.number(), // collectionRequests.id
+    createdAt: v.number(),
+  }).index("by_user", ["userEmail"]),
+
+  productReviews: defineTable({
+    productId: v.number(),
+    author: v.string(),
+    rating: v.number(),
+    date: v.string(),
+    text: v.string(),
+    avatar: v.string(),
+    sort: v.number(),
+  }).index("by_product", ["productId"]),
 });
