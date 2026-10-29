@@ -76,7 +76,7 @@ export const votingCards = query({
 export const notifications = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("notifications").withIndex("by_sort").collect();
+    return await ctx.db.query("notifications").withIndex("by_sort").order("asc").collect();
   },
 });
 
