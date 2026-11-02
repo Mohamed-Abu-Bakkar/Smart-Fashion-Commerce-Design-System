@@ -14,6 +14,6 @@ Open http://localhost:4174.
 
 ## Current integration status
 
-The dashboard ships with clearly identified demonstration data. The repository currently exposes customer-facing Convex shop/auth functionality, but not admin-scoped product, inventory, order, bargaining, preorder, voting, or analytics operations. No admin writes are sent to the customer backend. See `src/lib/adminApi.ts` for the typed integration boundary.
+The dashboard uses demonstration data by default. When `VITE_CONVEX_URL` is configured, it reads the existing public `revenueWeekly`, `collectionRequests`, and `votingCards` Convex queries. Revenue totals/KPIs, products, stock, orders, bargaining, pre-orders, customers, and campaigns remain preview data because the existing backend does not expose those admin operations. No admin writes are sent to Convex. See `src/lib/adminApi.ts` for the fail-closed admin integration boundary.
 
-Before production: implement server-side admin authorization and Convex admin queries/mutations; never rely on hiding UI controls for access control. Configure `VITE_CONVEX_URL` only after the authorization model is ready.
+Before production: implement server-side admin authentication, role-based access control, and admin-scoped Convex queries/mutations. Do not rely on hiding UI controls for access control. Add inventory and order data models and business rules before enabling fulfilment actions.
