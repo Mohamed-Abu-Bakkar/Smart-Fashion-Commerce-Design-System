@@ -13,26 +13,33 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
     steps:
-      - name: Explain required deployment secret
-        if: ${{ secrets.CONVEX_DEPLOY_KEY == '' }}
-        run: echo "::warning::Set the CONVEX_DEPLOY_KEY repository secret to enable automatic Convex deployment."
+      - id: check-key
+        name: Check Convex deployment configuration
+        shell: bash
+        run: |
+          if [ -n "$CONVEX_DEPLOY_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Add the CONVEX_DEPLOY_KEY repository secret to enable automatic Convex deployment."
+          fi
       - uses: actions/checkout@v4
-        if: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
+        if: steps.check-key.outputs.enabled == 'true'
       - uses: pnpm/action-setup@v4
-        if: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
+        if: steps.check-key.outputs.enabled == 'true'
         with:
           version: 9
       - uses: actions/setup-node@v4
-        if: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
+        if: steps.check-key.outputs.enabled == 'true'
         with:
           node-version: 22
           cache: pnpm
       - name: Install dependencies
-        if: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
+        if: steps.check-key.outputs.enabled == 'true'
         run: pnpm install --frozen-lockfile
       - name: Deploy Convex functions and schema
-        if: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
+        if: steps.check-key.outputs.enabled == 'true'
         run: pnpm exec convex deploy --yes
-        env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
