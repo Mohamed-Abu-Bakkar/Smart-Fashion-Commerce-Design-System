@@ -58,7 +58,10 @@ export default defineSchema({
     status: v.string(),
     img: v.string(),
     creator: v.string(),
-  }),
+    userEmail: v.optional(v.string()),
+    details: v.optional(v.string()),
+    createdAt: v.optional(v.number()),
+  }).index("by_created", ["createdAt"]),
 
   votingCards: defineTable({
     id: v.number(),
@@ -102,6 +105,13 @@ export default defineSchema({
     lastSeenAt: v.number(),
   }).index("by_token_hash", ["tokenHash"]).index("by_user", ["userId"]),
 
+  customerSessions: defineTable({
+    userEmail: v.string(),
+    tokenHash: v.string(),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+  }).index("by_token", ["tokenHash"]).index("by_user", ["userEmail"]),
+
   otpCodes: defineTable({
     email: v.string(), // lowercase
     code: v.string(),
@@ -113,7 +123,11 @@ export default defineSchema({
     userEmail: v.string(), // lowercase
     productId: v.number(),
     createdAt: v.number(),
-  }).index("by_user", ["userEmail"]),
+    alertsEnabled: v.optional(v.boolean()),
+    lastKnownPrice: v.optional(v.number()),
+    lastKnownStock: v.optional(v.number()),
+    lastKnownDiscount: v.optional(v.number()),
+  }).index("by_user", ["userEmail"]).index("by_user_product", ["userEmail", "productId"]),
 
   cardLikes: defineTable({
     userEmail: v.string(), // lowercase
@@ -126,6 +140,72 @@ export default defineSchema({
     requestId: v.number(), // collectionRequests.id
     createdAt: v.number(),
   }).index("by_user", ["userEmail"]),
+
+  cartItems: defineTable({
+    userEmail: v.string(), productId: v.number(), quantity: v.number(),
+    size: v.string(), color: v.string(), negotiatedPrice: v.optional(v.number()),
+    addedAt: v.number(), updatedAt: v.number(),
+  }).index("by_user", ["userEmail"]).index("by_user_product", ["userEmail", "productId"]),
+
+  orders: defineTable({
+    userEmail: v.string(), orderNumber: v.string(),
+    items: v.array(v.object({
+      productId: v.number(), name: v.string(), brand: v.string(), img: v.string(),
+      unitPrice: v.number(), quantity: v.number(), size: v.string(), color: v.string(),
+    })),
+    subtotal: v.number(), shippingFee: v.number(), total: v.number(),
+    paymentMethod: v.string(), paymentStatus: v.string(), status: v.string(),
+    shippingAddress: v.object({
+      name: v.string(), phone: v.string(), line1: v.string(),
+      city: v.string(), state: v.string(), postalCode: v.string(),
+    }),
+    createdAt: v.number(), updatedAt: v.number(),
+  }).index("by_user", ["userEmail"]),
+
+  bargains: defineTable({
+    userEmail: v.string(), productId: v.number(), productName: v.string(),
+    listPrice: v.number(), customerOffer: v.number(), counterOffer: v.optional(v.number()),
+    status: v.string(), attempts: v.number(), createdAt: v.number(), updatedAt: v.number(),
+  }).index("by_user", ["userEmail"]),
+
+  preOrders: defineTable({
+    userEmail: v.string(), productId: v.number(), productName: v.string(),
+    size: v.string(),
+    customMeasurements: v.optional(v.object({
+      height: v.number(), chest: v.number(), waist: v.number(), shoulder: v.number(), sleeve: v.number(),
+    })),
+    quantity: v.number(), notes: v.string(), status: v.string(),
+    createdAt: v.number(), updatedAt: v.number(),
+  }).index("by_user", ["userEmail"]),
+
+  userNotifications: defineTable({
+    userEmail: v.string(), kind: v.string(), title: v.string(), body: v.string(),
+    productId: v.optional(v.number()), isRead: v.boolean(), createdAt: v.number(),
+  }).index("by_user", ["userEmail"]),
+
+  savedOutfits: defineTable({
+    userEmail: v.string(), name: v.string(), productIds: v.array(v.number()), createdAt: v.number(),
+  }).index("by_user", ["userEmail"]),
+
+  eventShoppingLists: defineTable({
+    userEmail: v.string(), event: v.string(), budget: v.number(),
+    productIds: v.array(v.number()), createdAt: v.number(),
+  }).index("by_user", ["userEmail"]),
+
+  shoppingChats: defineTable({
+    userEmail: v.string(), messages: v.array(v.object({
+      role: v.string(), text: v.string(), productIds: v.optional(v.array(v.number())), createdAt: v.number(),
+    })), updatedAt: v.number(),
+  }).index("by_user", ["userEmail"]),
+
+  wardrobeItems: defineTable({
+    userEmail: v.string(), storageId: v.id("_storage"), category: v.string(),
+    label: v.string(), createdAt: v.number(),
+  }).index("by_user", ["userEmail"]),
+
+  cartMigrations: defineTable({
+    userEmail: v.string(), migrationId: v.string(), createdAt: v.number(),
+  }).index("by_user_migration", ["userEmail", "migrationId"]),
 
   productReviews: defineTable({
     productId: v.number(),
