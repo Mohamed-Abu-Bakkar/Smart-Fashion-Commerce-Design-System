@@ -75,6 +75,10 @@ export default defineSchema({
     passwordHash: v.string(),
     verified: v.boolean(),
     createdAt: v.number(),
+    // Backward-compatible fields present on existing demo/admin-managed users.
+    role: v.optional(v.string()),
+    blocked: v.optional(v.boolean()),
+    updatedAt: v.optional(v.number()),
   }).index("by_email", ["email"]),
 
   otpCodes: defineTable({
