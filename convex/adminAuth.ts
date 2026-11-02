@@ -15,12 +15,10 @@ async function requireAdmin(ctx: any, token: string) {
   const session = await ctx.db.query("adminSessions")
     .withIndex("by_token_hash", (q: any) => q.eq("tokenHash", tokenHash)).unique();
   if (!session || session.expiresAt <= Date.now()) {
-    if (session) await ctx.db.delete(session._id);
     throw new ConvexError("Admin session expired. Sign in again.");
   }
   const user = await ctx.db.get(session.userId);
   if (!user || user.role !== "admin" || !user.verified || user.blocked) {
-    await ctx.db.delete(session._id);
     throw new ConvexError("This account is not authorised for admin access.");
   }
   return { user, session };
