@@ -6,8 +6,8 @@ A separate Vite + React admin application for Smart Fashion Commerce.
 
 ```bash
 cd admin
-pnpm install
-pnpm dev
+npm install
+npm run dev
 ```
 
 Open http://localhost:4174.
