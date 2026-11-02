@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "./lib/convexApi";
 import {
@@ -16,6 +16,7 @@ import {
   BarChart, Bar, Cell
 } from "recharts";
 import "./styles.css";
+import "./auth.css";
 
 type Section = "Overview" | "Products" | "Orders" | "Inventory" | "Bargaining" | "Pre-orders" | "Collection requests" | "Community votes" | "Customers" | "Analytics" | "Campaigns" | "Settings";
 type Tone = "green" | "amber" | "red" | "blue" | "neutral";
@@ -148,7 +149,7 @@ export default function App(){
       setModal(false);setProductName("");setProductPrice("");flash("Product draft saved to Convex");
     }catch(e:any){flash(e?.message??"Could not save product");}
   };
-  const signInAdmin=async(e:React.FormEvent)=>{
+  const signInAdmin=async(e:FormEvent)=>{
     e.preventDefault();setLoginError("");
     if(!loginEmail.trim()||!loginPassword){setLoginError("Enter your admin email and password.");return;}
     const url=import.meta.env.VITE_CONVEX_URL;
