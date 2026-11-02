@@ -672,7 +672,7 @@ function HomeScreen({ onProduct, wishlisted, onWishlist, cartCount, onCart, onNa
 
           {/* Hero */}
           <div className="relative rounded-3xl overflow-hidden h-52 bg-secondary">
-            <img src="https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=800&h=500&fit=crop&auto=format"
+            <img src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&h=500&fit=crop&auto=format"
               alt="New Collection" className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/40 to-transparent" />
             <div className="absolute inset-0 p-5 flex flex-col justify-end">
