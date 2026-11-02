@@ -94,6 +94,14 @@ export default defineSchema({
     updatedAt: v.optional(v.number()),
   }).index("by_email", ["email"]),
 
+  adminSessions: defineTable({
+    userId: v.id("users"),
+    tokenHash: v.string(),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+    lastSeenAt: v.number(),
+  }).index("by_token_hash", ["tokenHash"]).index("by_user", ["userId"]),
+
   otpCodes: defineTable({
     email: v.string(), // lowercase
     code: v.string(),
