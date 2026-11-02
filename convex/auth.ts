@@ -4,6 +4,45 @@ import { ConvexError, v } from "convex/values";
 const OTP_TTL_MS = 5 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
 
+const CUSTOMER_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+function newSessionToken() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function hashCustomerToken(token: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function createCustomerSession(ctx: any, user: { name: string; email: string }) {
+  const token = newSessionToken();
+  const now = Date.now();
+  await ctx.db.insert("customerSessions", {
+    userEmail: user.email,
+    tokenHash: await hashCustomerToken(token),
+    expiresAt: now + CUSTOMER_SESSION_TTL_MS,
+    createdAt: now,
+  });
+  return { name: user.name, email: user.email, sessionToken: token };
+}
+
+export const revokeCustomerSession = mutation({
+  args: { sessionToken: v.string() },
+  handler: async (ctx, args) => {
+    if (!args.sessionToken) return { ok: true };
+    const tokenHash = await hashCustomerToken(args.sessionToken);
+    const session = await ctx.db.query("customerSessions")
+      .withIndex("by_token", (q) => q.eq("tokenHash", tokenHash))
+      .unique();
+    if (session) await ctx.db.delete(session._id);
+    return { ok: true };
+  },
+});
+
+
 function makeCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
@@ -85,7 +124,7 @@ export const verifyOtp = mutation({
       .unique();
     if (!user) throw new Error("Account not found. Please sign up first.");
     if (!user.verified) await ctx.db.patch(user._id, { verified: true });
-    return { name: user.name, email: user.email };
+    return await createCustomerSession(ctx, user);
   },
 });
 
@@ -112,6 +151,9 @@ export const login = mutation({
         message: "No account found with this email. Please create one.",
       });
     }
+    if (user.blocked === true) {
+      throw new ConvexError({ code: "blocked", message: "This account is currently blocked. Contact support." });
+    }
     if (user.passwordHash !== args.passwordHash) {
       throw new ConvexError({ code: "wrong_password", message: "Incorrect password. Try again." });
     }
@@ -123,6 +165,6 @@ export const login = mutation({
         demoCode: code,
       });
     }
-    return { name: user.name, email: user.email };
+    return await createCustomerSession(ctx, user);
   },
 });
