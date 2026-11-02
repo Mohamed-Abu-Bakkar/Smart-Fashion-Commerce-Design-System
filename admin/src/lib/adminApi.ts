@@ -1,10 +1,4 @@
-/**
- * Admin API boundary.
- * The current Convex schema has storefront-facing product, collection-request,
- * voting and notification queries, but no admin authentication/RBAC or admin
- * mutations. Keep privileged writes behind server-side authorization before
- * connecting this interface to production data.
- */
+/** Shared admin access contracts. Authorization is enforced in convex/adminAuth.ts. */
 export type AdminCapability =
   | "products.read" | "products.write" | "inventory.write"
   | "orders.read" | "orders.fulfil" | "bargaining.manage"
@@ -13,17 +7,14 @@ export type AdminCapability =
 
 export interface AdminSession {
   subject: string;
-  roles: Array<"owner" | "admin" | "catalog" | "fulfilment" | "support" | "analyst">;
+  roles: Array<"admin">;
   capabilities: AdminCapability[];
 }
 
-export interface AdminApi {
-  getSession(): Promise<AdminSession | null>;
-  hasCapability(capability: AdminCapability): boolean;
+/**
+ * UI capability checks are convenience only. Every protected backend operation
+ * must independently validate the session token and current users.role.
+ */
+export function hasAdminRole(session: AdminSession | null): boolean {
+  return Boolean(session?.roles.includes("admin"));
 }
-
-/** Placeholder intentionally fails closed until a verified admin session exists. */
-export const adminApi: AdminApi = {
-  async getSession() { return null; },
-  hasCapability() { return false; },
-};
