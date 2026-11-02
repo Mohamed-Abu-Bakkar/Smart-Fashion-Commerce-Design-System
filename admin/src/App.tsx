@@ -9,7 +9,7 @@ import {
   Shirt, ShoppingBag, ShoppingCart, Sparkles, Tag, TrendingUp, Truck,
   Users, Vote, Wallet, X, Zap, SlidersHorizontal, Clock3, CheckCircle2,
   AlertCircle, CircleDollarSign, RefreshCw, Send, BarChart3, Layers3,
-  ScanSearch, UserRound, type LucideIcon
+  ScanSearch, UserRound, Lock, LogOut, type LucideIcon
 } from "lucide-react";
 import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -69,6 +69,12 @@ const revenueData=[
 const categories=[{name:"Hoodies",value:38},{name:"T-shirts",value:27},{name:"Denim",value:21},{name:"Others",value:14}];
 
 const money=(n:number)=>"₹"+n.toLocaleString("en-IN");
+const ADMIN_SESSION_KEY = "sf-admin-session";
+async function hashAdminPassword(email:string,password:string){
+  const data=new TextEncoder().encode(email.trim().toLowerCase()+"::"+password);
+  const digest=await crypto.subtle.digest("SHA-256",data);
+  return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,"0")).join("");
+}
 function Status({children,tone="neutral"}:{children:string;tone?:Tone}){return <span className={"status "+tone}><i />{children}</span>}
 function Metric({label,value,change,icon:Icon,note}:{label:string;value:string;change:string;icon:LucideIcon;note:string}){
   return <div className="metric-card"><div className="metric-top"><span>{label}</span><span className="metric-icon"><Icon size={17}/></span></div><div className="metric-value">{value}</div><div className="metric-foot"><span className="trend"><ArrowUpRight size={14}/>{change}</span><span>{note}</span></div></div>;
@@ -92,34 +98,76 @@ export default function App(){
   const [period,setPeriod]=useState("Last 7 days");
   const [filter,setFilter]=useState("All");
   const [backendStatus,setBackendStatus]=useState<"preview"|"connected"|"error">("preview");
+  const [authToken,setAuthToken]=useState(()=>sessionStorage.getItem(ADMIN_SESSION_KEY)??"");
+  const [adminUser,setAdminUser]=useState<{name:string;email:string;role:string}|null>(null);
+  const [loginEmail,setLoginEmail]=useState("");
+  const [loginPassword,setLoginPassword]=useState("");
+  const [loginError,setLoginError]=useState("");
+  const [loginBusy,setLoginBusy]=useState(false);
   const [revenueSeries,setRevenueSeries]=useState(revenueData);
   const [liveRequests,setLiveRequests]=useState(requests);
   const [liveVotes,setLiveVotes]=useState([{title:"Obsidian Series",designer:"Studio Noir",votes:3241,comments:87,progress:78,img:"https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=300&h=180&fit=crop"},{title:"Glass & Shadow",designer:"Form Studio",votes:2109,comments:54,progress:51,img:"https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=300&h=180&fit=crop"},{title:"Velocity Pack",designer:"Motion Lab",votes:1834,comments:43,progress:34,img:"https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=300&h=180&fit=crop"}]);
   useEffect(()=>{
     const url=import.meta.env.VITE_CONVEX_URL;
-    if(!url) return;
+    if(!url||!authToken) return;
     const client=new ConvexHttpClient(url);
     let active=true;
     Promise.all([
-      client.query(api.shop.listProducts,{}),
-      client.query(api.shop.revenueWeekly,{}),
-      client.query(api.shop.collectionRequests,{}),
-      client.query(api.shop.votingCards,{})
-    ]).then(([productRows,revenueRows,collectionRows,votingRows])=>{
+      client.query(api.adminAuth.session,{token:authToken}),
+      client.query(api.adminAuth.bootstrap,{token:authToken})
+    ]).then(([session,data])=>{
       if(!active) return;
-      if(productRows.length) setProducts(productRows.map((row:any)=>({id:"SF-"+row.id,name:row.name,category:row.category,price:row.price,stock:null,status:"Active" as const,image:row.img,sku:"SF-"+String(row.id).padStart(4,"0")})));
-      if(revenueRows.length) setRevenueSeries(revenueRows.map((row:any)=>({day:row.day,revenue:Math.round(row.rev/1000),orders:row.orders})));
-      if(collectionRows.length) setLiveRequests(collectionRows.map((row:any)=>({id:"CR-"+String(row.id).padStart(3,"0"),title:row.title,category:row.category,votes:row.votes,interested:row.interested,progress:Math.min(100,Math.round(row.votes/1500*100)),status:row.status,image:row.img})));
-      if(votingRows.length) setLiveVotes(votingRows.map((row:any)=>({title:row.title,designer:row.designer,votes:row.likes,comments:row.comments,progress:row.progress,img:row.img})));
+      setAdminUser({name:session.name,email:session.email,role:session.role});
+      if(data.products.length) setProducts(data.products.map((row:any)=>({id:"SF-"+row.id,name:row.name,category:row.category,price:row.price,stock:row.stock??null,status:(row.status==="Draft"?"Draft":row.stock!==undefined&&row.stock<10?"Low stock":"Active") as Product["status"],image:row.img,sku:row.sku??"SF-"+String(row.id).padStart(4,"0")})));
+      if(data.revenue.length) setRevenueSeries(data.revenue.map((row:any)=>({day:row.day,revenue:Math.round(row.rev/1000),orders:row.orders})));
+      if(data.requests.length) setLiveRequests(data.requests.map((row:any)=>({id:"CR-"+String(row.id).padStart(3,"0"),title:row.title,category:row.category,votes:row.votes,interested:row.interested,progress:Math.min(100,Math.round(row.votes/1500*100)),status:row.status,image:row.img})));
+      if(data.votes.length) setLiveVotes(data.votes.map((row:any)=>({title:row.title,designer:row.designer,votes:row.likes,comments:row.comments,progress:row.progress,img:row.img})));
       setBackendStatus("connected");
-    }).catch(()=>{if(active)setBackendStatus("error");});
+    }).catch(()=>{
+      if(!active)return;
+      sessionStorage.removeItem(ADMIN_SESSION_KEY);
+      setAuthToken("");
+      setAdminUser(null);
+      setBackendStatus("error");
+      setLoginError("Your admin session expired. Please sign in again.");
+    });
     return ()=>{active=false;};
-  },[]);
+  },[authToken]);
   const filteredProducts=useMemo(()=>products.filter(p=>(p.name+" "+p.id+" "+p.category).toLowerCase().includes(query.toLowerCase())&&(filter==="All"||p.status===filter)),[products,query,filter]);
   const filteredOrders=useMemo(()=>orders.filter(o=>(o.id+" "+o.customer).toLowerCase().includes(query.toLowerCase())&&(filter==="All"||o.status===filter)),[orders,query,filter]);
   const flash=(message:string)=>{setNotice(message);window.setTimeout(()=>setNotice(""),2600)};
   const changeOrder=(id:string,status:Order["status"])=>{setOrders(old=>old.map(o=>o.id===id?{...o,status}:o));flash(id+" marked "+status.toLowerCase());};
-  const createProduct=()=>{if(!productName.trim()||!productPrice||Number(productPrice)<=0){flash("Enter a product name and valid price");return;}setProducts(old=>[{id:"SF-"+(1043+old.length),name:productName,category:productCategory,price:Number(productPrice),stock:0,status:"Draft",image:"https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=120&h=120&fit=crop",sku:"NEW-"+(old.length+1)} ,...old]);setModal(false);setProductName("");setProductPrice("");flash("Product draft created");};
+  const createProduct=async()=>{
+    if(!productName.trim()||!productPrice||Number(productPrice)<=0){flash("Enter a product name and valid price");return;}
+    const url=import.meta.env.VITE_CONVEX_URL;
+    if(!url||!authToken){flash("Admin connection is unavailable");return;}
+    try{
+      const client=new ConvexHttpClient(url);
+      const created=await client.mutation(api.adminAuth.createProduct,{token:authToken,name:productName.trim(),category:productCategory,price:Number(productPrice),stock:0,img:"https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=120&h=120&fit=crop"});
+      setProducts(old=>[{id:"SF-"+created.id,name:productName.trim(),category:productCategory,price:Number(productPrice),stock:0,status:"Draft",image:"https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=120&h=120&fit=crop",sku:created.sku},...old]);
+      setModal(false);setProductName("");setProductPrice("");flash("Product draft saved to Convex");
+    }catch(e:any){flash(e?.message??"Could not save product");}
+  };
+  const signInAdmin=async(e:React.FormEvent)=>{
+    e.preventDefault();setLoginError("");
+    if(!loginEmail.trim()||!loginPassword){setLoginError("Enter your admin email and password.");return;}
+    const url=import.meta.env.VITE_CONVEX_URL;
+    if(!url){setLoginError("Admin backend is not configured. Set VITE_CONVEX_URL in the admin deployment.");return;}
+    setLoginBusy(true);
+    try{
+      const client=new ConvexHttpClient(url);
+      const passwordHash=await hashAdminPassword(loginEmail,loginPassword);
+      const result=await client.mutation(api.adminAuth.login,{email:loginEmail.trim().toLowerCase(),passwordHash});
+      sessionStorage.setItem(ADMIN_SESSION_KEY,result.token);
+      setAuthToken(result.token);setAdminUser(result.user);setLoginPassword("");
+    }catch(err:any){setLoginError(err?.message??"Unable to sign in. Check your credentials.");}
+    finally{setLoginBusy(false);}
+  };
+  const signOutAdmin=async()=>{
+    const url=import.meta.env.VITE_CONVEX_URL;
+    try{if(url&&authToken)await new ConvexHttpClient(url).mutation(api.adminAuth.logout,{token:authToken});}catch{}
+    sessionStorage.removeItem(ADMIN_SESSION_KEY);setAuthToken("");setAdminUser(null);setLoginPassword("");setSection("Overview");
+  };
   const exportCsv=()=>{const rows=[["Order","Customer","Date","Items","Total","Status"],...orders.map(o=>[o.id,o.customer,o.date,String(o.items),String(o.total),o.status])];const csv=rows.map(r=>r.map(v=>'"'+v.replace(/"/g,'""')+'"').join(",")).join("\n");const url=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));const a=document.createElement("a");a.href=url;a.download="sf-commerce-orders-demo.csv";a.click();URL.revokeObjectURL(url);flash("Demo order CSV exported");};
   const renderDashboard=()=> <div className="page-body">
     <div className="welcome-row"><div><div className="eyebrow">TUESDAY, NOVEMBER 3, 2026</div><h2>Your store at a glance<span className="wave"> ✳</span></h2><p>Here’s what’s happening with your fashion business today.</p></div><button className="btn btn-secondary" onClick={()=>flash("Dashboard refreshed with demo data")}><RefreshCw size={15}/> Refresh</button></div>
@@ -166,19 +214,34 @@ export default function App(){
 
   const contents:Record<Section,()=>JSX.Element>={"Overview":renderDashboard,"Products":renderProducts,"Orders":renderOrders,"Inventory":renderInventory,"Bargaining":renderBargaining,"Pre-orders":renderPreorders,"Collection requests":renderRequests,"Community votes":renderVotes,"Customers":renderCustomers,"Analytics":renderAnalytics,"Campaigns":renderCampaigns,"Settings":renderSettings};
   const groups=[...new Set(nav.map(n=>n.group))];
+  if(!authToken) return <div className="auth-shell">
+    <form className="auth-card" onSubmit={signInAdmin}>
+      <div className="auth-brand"><span className="brand-mark"><span/></span><div><b>sf<span>commerce</span></b><small>ADMIN STUDIO</small></div></div>
+      <div className="auth-lock"><Lock size={22}/></div>
+      <span className="eyebrow">SECURE STORE ACCESS</span>
+      <h1>Welcome back</h1>
+      <p>Sign in with your authorised Smart Fashion admin account.</p>
+      <label>Admin email<input type="email" autoComplete="username" value={loginEmail} onChange={e=>setLoginEmail(e.target.value)} placeholder="admin@example.com" required/></label>
+      <label>Password<input type="password" autoComplete="current-password" value={loginPassword} onChange={e=>setLoginPassword(e.target.value)} placeholder="Enter your password" required/></label>
+      {loginError&&<div className="auth-error" role="alert">{loginError}</div>}
+      <button className="btn btn-primary auth-submit" type="submit" disabled={loginBusy}>{loginBusy?"Verifying…":"Sign in securely"} <ArrowRight size={15}/></button>
+      <small className="auth-footnote">Only verified accounts with the <b>admin</b> role can access this workspace.</small>
+    </form>
+  </div>;
+  if(!adminUser) return <div className="auth-shell"><div className="auth-card"><span className="eyebrow">VERIFYING ACCESS</span><h1>Checking your session…</h1><p>Connecting securely to the Smart Fashion database.</p></div></div>;
   return <div className="app-shell">
     <aside className={"sidebar "+(mobileOpen?"mobile-open":"")}><div className="brand"><span className="brand-mark"><span/></span><div><b>sf<span>commerce</span></b><small>ADMIN STUDIO</small></div><button className="close-mobile" onClick={()=>setMobileOpen(false)}><X size={18}/></button></div>
       <div className="store-switch"><span className="store-avatar">S</span><div><b>Smart Fashion</b><small>Primary store</small></div><ChevronDown size={15}/></div>
       <nav>{groups.map(g=><div className="nav-group" key={g}><span className="nav-label">{g}</span>{nav.filter(n=>n.group===g).map(n=><button key={n.label} className={"nav-item "+(section===n.label?"active":"")} onClick={()=>{setSection(n.label as Section);setQuery("");setFilter("All");setMobileOpen(false)}}><n.icon size={17} strokeWidth={1.8}/><span>{n.label}</span>{n.count&&<i>{n.count}</i>}</button>)}</div>)}</nav>
-      <div className="sidebar-bottom"><div className="help-card"><span className="help-icon"><CircleHelp size={17}/></span><b>Need a hand?</b><p>Explore the admin setup guide.</p><button onClick={()=>setSection("Settings")}>Help centre <ArrowRight size={13}/></button></div><div className="profile-row"><Avatar name="Store Admin"/><div><b>Store Admin</b><span>Administrator</span></div><MoreHorizontal size={18}/></div></div>
+      <div className="sidebar-bottom"><div className="help-card"><span className="help-icon"><CircleHelp size={17}/></span><b>Need a hand?</b><p>Explore the admin setup guide.</p><button onClick={()=>setSection("Settings")}>Help centre <ArrowRight size={13}/></button></div><div className="profile-row"><Avatar name={adminUser?.name??"Admin"}/><div><b>{adminUser?.name??"Admin"}</b><span>{adminUser?.email}</span></div><button className="icon-btn" onClick={signOutAdmin} aria-label="Sign out"><LogOut size={17}/></button></div></div>
     </aside>
     <main className="main-area"><header className="topbar"><div className="top-left"><button className="mobile-menu" onClick={()=>setMobileOpen(true)}><Menu size={19}/></button><div className="breadcrumb">Workspace <ChevronRight size={14}/><b>{section}</b></div></div><div className="top-actions"><div className="global-search"><Search size={15}/><input placeholder="Search anything..." value={query} onChange={e=>setQuery(e.target.value)}/><kbd>⌘ K</kbd></div><button className="top-icon" onClick={()=>flash("You’re all caught up")} aria-label="Notifications"><Bell size={18}/><i/></button><span className="top-divider"/><Avatar name="Store Admin"/></div></header>
       <div className="page-heading"><div><span className="heading-kicker">SMART FASHION COMMERCE</span><h1>{section==="Overview"?"Overview":section}</h1></div><div className="heading-right"><span className="live-dot"/> Store workspace <span className="heading-divider"/> <span className="muted">INR ₹</span></div></div>
       {contents[section]()}
-      <footer><span>© 2026 SF Commerce</span><span>Designed for thoughtful retail <span className="footer-heart">♥</span></span><span>Admin preview · v0.1</span></footer>
+      <footer><span>© 2026 SF Commerce</span><span>Designed for thoughtful retail <span className="footer-heart">♥</span></span><span>Admin workspace · authenticated</span></footer>
     </main>
     {notice&&<div className="toast"><CheckCircle2 size={16}/>{notice}</div>}
-    {modal&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setModal(false)}}><div className="modal"><div className="modal-head"><div><span className="eyebrow">CATALOG</span><h3>Add a product</h3></div><button className="icon-btn" onClick={()=>setModal(false)}><X size={18}/></button></div><label>Product name<input value={productName} onChange={e=>setProductName(e.target.value)} placeholder="e.g. Everyday cotton shirt"/></label><div className="form-two"><label>Category<select value={productCategory} onChange={e=>setProductCategory(e.target.value)}>{["T-shirts","Hoodies","Shirts","Denim","Footwear","Accessories"].map(c=><option key={c}>{c}</option>)}</select></label><label>Price (₹)<input type="number" min="1" value={productPrice} onChange={e=>setProductPrice(e.target.value)} placeholder="1299"/></label></div><div className="modal-note"><AlertCircle size={15}/> This creates a local draft in the preview. It does not write to Convex.</div><div className="modal-actions"><button className="btn btn-secondary" onClick={()=>setModal(false)}>Cancel</button><button className="btn btn-primary" onClick={createProduct}>Create draft <ArrowRight size={14}/></button></div></div></div>}
+    {modal&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setModal(false)}}><div className="modal"><div className="modal-head"><div><span className="eyebrow">CATALOG</span><h3>Add a product</h3></div><button className="icon-btn" onClick={()=>setModal(false)}><X size={18}/></button></div><label>Product name<input value={productName} onChange={e=>setProductName(e.target.value)} placeholder="e.g. Everyday cotton shirt"/></label><div className="form-two"><label>Category<select value={productCategory} onChange={e=>setProductCategory(e.target.value)}>{["T-shirts","Hoodies","Shirts","Denim","Footwear","Accessories"].map(c=><option key={c}>{c}</option>)}</select></label><label>Price (₹)<input type="number" min="1" value={productPrice} onChange={e=>setProductPrice(e.target.value)} placeholder="1299"/></label></div><div className="modal-note"><AlertCircle size={15}/> This creates a draft product in the live Convex catalogue.</div><div className="modal-actions"><button className="btn btn-secondary" onClick={()=>setModal(false)}>Cancel</button><button className="btn btn-primary" onClick={createProduct}>Create draft <ArrowRight size={14}/></button></div></div></div>}
   </div>;
 }
 function OrderTable({rows,onChange}:{rows:Order[];onChange:(id:string,status:Order["status"])=>void}){
