@@ -9,6 +9,7 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as commerce from "../commerce.js";
 import type * as seed from "../seed.js";
 import type * as shop from "../shop.js";
 
@@ -20,6 +21,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  commerce: typeof commerce;
   seed: typeof seed;
   shop: typeof shop;
 }>;
