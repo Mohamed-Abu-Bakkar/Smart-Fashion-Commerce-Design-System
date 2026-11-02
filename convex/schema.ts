@@ -19,6 +19,19 @@ export default defineSchema({
     isTrending: v.boolean(),
     material: v.string(),
     desc: v.string(),
+    // Optional catalog metadata already present on stored/admin-managed products.
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+    gallery: v.optional(v.array(v.string())),
+    priceHistory: v.optional(v.array(v.object({
+      month: v.string(),
+      price: v.number(),
+    }))),
+    sku: v.optional(v.string()),
+    sort: v.optional(v.number()),
+    status: v.optional(v.string()),
+    stock: v.optional(v.number()),
+    tags: v.optional(v.array(v.string())),
   })
     .index("by_product_id", ["id"])
     .index("by_category", ["category"]),
