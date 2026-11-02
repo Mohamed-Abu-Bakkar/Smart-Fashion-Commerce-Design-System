@@ -35,3 +35,6 @@ pnpm-debug.log*
 # vite
 *.tsbuildinfo
 vite.config.*.timestamp-*
+
+# Vercel build output is generated during deployment; never commit it
+.vercel/output/
