@@ -12,19 +12,27 @@ on:
 
 jobs:
   deploy:
-    if: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
     runs-on: ubuntu-latest
     steps:
+      - name: Explain required deployment secret
+        if: ${{ secrets.CONVEX_DEPLOY_KEY == '' }}
+        run: echo "::warning::Set the CONVEX_DEPLOY_KEY repository secret to enable automatic Convex deployment."
       - uses: actions/checkout@v4
+        if: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
       - uses: pnpm/action-setup@v4
+        if: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
         with:
           version: 9
       - uses: actions/setup-node@v4
+        if: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - name: Install dependencies
+        if: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
+        run: pnpm install --frozen-lockfile
       - name: Deploy Convex functions and schema
+        if: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
         run: pnpm exec convex deploy --yes
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
