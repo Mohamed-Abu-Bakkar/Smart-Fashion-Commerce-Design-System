@@ -21,7 +21,7 @@ Open http://localhost:4174. To use the existing public Convex reads, copy `.env.
 
 ## Current integration status
 
-The dashboard uses demonstration data by default. When `VITE_CONVEX_URL` is configured, it reads the existing public `revenueWeekly`, `collectionRequests`, and `votingCards` Convex queries. Revenue totals/KPIs, products, stock, orders, bargaining, pre-orders, customers, and campaigns remain preview data because the existing backend does not expose those admin operations. No admin writes are sent to Convex. See `src/lib/adminApi.ts` for the fail-closed admin integration boundary.
+The dashboard uses demonstration data by default. When `VITE_CONVEX_URL` is configured, it reads the existing public `listProducts`, `revenueWeekly`, `collectionRequests`, and `votingCards` Convex queries. The product catalogue and those community/revenue charts are read-only. Revenue KPI totals, stock, orders, bargaining, pre-orders, customers, and campaigns remain preview data because the existing backend does not expose those admin operations. No admin writes are sent to Convex. See `src/lib/adminApi.ts` for the fail-closed admin integration boundary.
 
 Before production: implement server-side admin authentication, role-based access control, and admin-scoped Convex queries/mutations. Do not rely on hiding UI controls for access control. Add inventory and order data models and business rules before enabling fulfilment actions.
 
