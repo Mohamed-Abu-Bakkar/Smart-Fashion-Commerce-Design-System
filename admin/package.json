@@ -18,5 +18,11 @@
     "recharts": "2.15.2",
     "convex": "^1.45.0"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@types/react": "18.3.18",
+    "@types/react-dom": "18.3.5",
+    "@vitejs/plugin-react": "4.7.0",
+    "typescript": "~5.7.2",
+    "vite": "6.3.5"
+  }
 }
