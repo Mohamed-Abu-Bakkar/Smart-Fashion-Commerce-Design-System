@@ -107,10 +107,10 @@ export default function App(){
       client.query(api.shop.votingCards,{})
     ]).then(([productRows,revenueRows,collectionRows,votingRows])=>{
       if(!active) return;
-      if(productRows.length) setProducts(productRows.map(row=>({id:"SF-"+row.id,name:row.name,category:row.category,price:row.price,stock:null,status:"Active" as const,image:row.img,sku:"SF-"+String(row.id).padStart(4,"0")})));
-      if(revenueRows.length) setRevenueSeries(revenueRows.map(row=>({day:row.day,revenue:Math.round(row.rev/1000),orders:row.orders})));
-      if(collectionRows.length) setLiveRequests(collectionRows.map(row=>({id:"CR-"+String(row.id).padStart(3,"0"),title:row.title,category:row.category,votes:row.votes,interested:row.interested,progress:Math.min(100,Math.round(row.votes/1500*100)),status:row.status,image:row.img})));
-      if(votingRows.length) setLiveVotes(votingRows.map(row=>({title:row.title,designer:row.designer,votes:row.likes,comments:row.comments,progress:row.progress,img:row.img})));
+      if(productRows.length) setProducts(productRows.map((row:any)=>({id:"SF-"+row.id,name:row.name,category:row.category,price:row.price,stock:null,status:"Active" as const,image:row.img,sku:"SF-"+String(row.id).padStart(4,"0")})));
+      if(revenueRows.length) setRevenueSeries(revenueRows.map((row:any)=>({day:row.day,revenue:Math.round(row.rev/1000),orders:row.orders})));
+      if(collectionRows.length) setLiveRequests(collectionRows.map((row:any)=>({id:"CR-"+String(row.id).padStart(3,"0"),title:row.title,category:row.category,votes:row.votes,interested:row.interested,progress:Math.min(100,Math.round(row.votes/1500*100)),status:row.status,image:row.img})));
+      if(votingRows.length) setLiveVotes(votingRows.map((row:any)=>({title:row.title,designer:row.designer,votes:row.likes,comments:row.comments,progress:row.progress,img:row.img})));
       setBackendStatus("connected");
     }).catch(()=>{if(active)setBackendStatus("error");});
     return ()=>{active=false;};
