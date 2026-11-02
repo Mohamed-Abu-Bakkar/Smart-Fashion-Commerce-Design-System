@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ConvexHttpClient } from "convex/browser";
-import { api } from "../../convex/_generated/api";
+import { api } from "./lib/convexApi";
 import {
   Activity, ArrowDownRight, ArrowRight, ArrowUpRight, Bell, Box, CalendarDays,
   Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, ClipboardList,
