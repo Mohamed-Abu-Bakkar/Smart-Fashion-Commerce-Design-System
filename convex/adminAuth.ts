@@ -82,15 +82,17 @@ export const bootstrap = query({
 export const createProduct = mutation({
   args: {
     token: v.string(), name: v.string(), category: v.string(), price: v.number(),
-    stock: v.number(), img: v.string(),
+    stock: v.number(), img: v.string(), desc: v.string(), minSellingPrice: v.number(),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx, args.token);
     const name = args.name.trim();
     const category = args.category.trim();
-    if (name.length < 2 || category.length < 2 || !Number.isFinite(args.price) || args.price <= 0 ||
+    const desc = args.desc.trim();
+    if (name.length < 2 || category.length < 2 || desc.length < 20 || !Number.isFinite(args.price) || args.price <= 0 ||
+        !Number.isFinite(args.minSellingPrice) || args.minSellingPrice <= 0 || args.minSellingPrice > args.price ||
         !Number.isInteger(args.stock) || args.stock < 0) {
-      throw new ConvexError("Enter a valid product name, category, price and stock quantity.");
+      throw new ConvexError("Enter a description (at least 20 characters), valid price, minimum selling price not above list price, and stock quantity.");
     }
     const all = await ctx.db.query("products").collect();
     const id = all.reduce((max, p) => Math.max(max, p.id), 0) + 1;
@@ -99,7 +101,7 @@ export const createProduct = mutation({
       id, name, brand: "Smart Fashion", price: args.price, original: args.price,
       discount: 0, rating: 0, reviews: 0, img: args.img, category,
       colors: ["#111111"], sizes: ["S", "M", "L", "XL"], isNew: true, isTrending: false,
-      material: "Not specified", desc: "", createdAt: now, updatedAt: now,
+      material: "Not specified", desc, minSellingPrice: args.minSellingPrice, createdAt: now, updatedAt: now,
       sku: "SF-" + String(id).padStart(5, "0"), stock: args.stock,
       status: "Draft",
     };
