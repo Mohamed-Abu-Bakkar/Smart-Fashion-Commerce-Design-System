@@ -82,30 +82,32 @@ export const submitOffer = mutation({
       throw new ConvexError("This offer expired. Start a new bargain.");
     }
     if (session.round >= 3) throw new ConvexError("Maximum negotiation rounds reached.");
-    if (!Number.isFinite(args.offer) || args.offer <= 0 || args.offer >= session.originalTotal) throw new ConvexError("Enter an offer below the cart total.");
+    if (!Number.isFinite(args.offer) || args.offer <= 0 || args.offer > session.originalTotal) throw new ConvexError("Enter an offer below the cart total.");
     const lines = await ctx.db.query("bargainItems").withIndex("by_bargain", (q) => q.eq("bargainId", session._id)).collect();
     const floorTotal = lines.reduce((sum, i) => sum + i.floorUnitPrice * i.quantity, 0);
     const nextRound = session.round + 1;
+    const acceptingCounter = typeof session.pendingCounter === "number" && args.offer >= session.pendingCounter;
+    const acceptedOffer = acceptingCounter ? session.pendingCounter! : args.offer;
     const counter = Math.max(floorTotal, Math.ceil((session.originalTotal + args.offer) / 2));
-    if (args.offer >= floorTotal && (args.offer >= counter || nextRound === 3)) {
+    if (acceptedOffer >= floorTotal && (acceptingCounter || acceptedOffer >= counter || nextRound === 3)) {
       const allocation = lines.map((line) => {
         const list = line.listUnitPrice * line.quantity;
         const floor = line.floorUnitPrice * line.quantity;
-        const proportional = Math.max(floor, Math.round(args.offer * list / session.originalTotal));
+        const proportional = Math.max(floor, Math.round(acceptedOffer * list / session.originalTotal));
         return { line, unit: Math.max(line.floorUnitPrice, Math.min(line.listUnitPrice, proportional / line.quantity)) };
       });
       let allocated = allocation.reduce((sum, x) => sum + x.unit * x.line.quantity, 0);
-      if (allocated > args.offer) {
+      if (allocated > acceptedOffer) {
         for (const x of allocation) {
-          const reduceBy = Math.min(x.unit - x.line.floorUnitPrice, (allocated - args.offer) / x.line.quantity);
+          const reduceBy = Math.min(x.unit - x.line.floorUnitPrice, (allocated - acceptedOffer) / x.line.quantity);
           x.unit -= reduceBy; allocated -= reduceBy * x.line.quantity;
         }
       }
       for (const x of allocation) await ctx.db.patch(x.line._id, { agreedUnitPrice: Math.max(x.line.floorUnitPrice, x.unit) });
-      await ctx.db.patch(session._id, { status: "accepted", round: nextRound, currentOffer: allocated, acceptedTotal: allocated, updatedAt: Date.now() });
+      await ctx.db.patch(session._id, { status: "accepted", round: nextRound, currentOffer: allocated, pendingCounter: undefined, acceptedTotal: allocated, updatedAt: Date.now() });
       return { status: "accepted", round: nextRound, total: allocated, floorTotal, expiresAt: session.expiresAt };
     }
-    await ctx.db.patch(session._id, { round: nextRound, currentOffer: args.offer, updatedAt: Date.now() });
+    await ctx.db.patch(session._id, { round: nextRound, currentOffer: args.offer, pendingCounter: counter, updatedAt: Date.now() });
     return { status: "countered", round: nextRound, counterOffer: counter, floorTotal, expiresAt: session.expiresAt };
   },
 });
