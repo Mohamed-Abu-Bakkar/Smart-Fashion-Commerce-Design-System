@@ -16,7 +16,7 @@ type Commerce = {
   subtotal: number;
   shippingFee: number;
   orders: any[];
-  addToCart: (product: Product, quantity?: number, size?: string, color?: string, negotiatedPrice?: number) => Promise<void>;
+  addToCart: (product: Product, quantity?: number, size?: string, color?: string) => Promise<void>;
   removeFromCart: (line: CartLine) => Promise<void>;
   setQuantity: (line: CartLine, quantity: number) => Promise<void>;
   placeOrder: (address: ShippingAddress, method: "upi" | "cod") => Promise<any>;
