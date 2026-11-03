@@ -40,7 +40,7 @@ async function groqCompletion(apiKey: string, body: Record<string, unknown>) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(35_000),
+    signal: AbortSignal.timeout(24_000),
   });
 
   if (!response.ok) {
@@ -201,7 +201,7 @@ export default async function handler(req: any, res: any) {
             "Return concise, practical styling advice. Never reveal private chain-of-thought; provide short customer-facing reasons only.",
             "Return JSON only in this shape: {message:string,outfitPlan:string,colourSuggestions:string[],stylingTips:string[],matches:[{id:number,role:string,reason:string}]}. Return at most 6 matches, best first."
           ].join(" "),
-          customer: { name: customer.name, request: userRequest, recentConversation: recentMessages },
+          customer: { request: userRequest, recentConversation: recentMessages },
           garmentAnalysis: visionAnalysis,
           catalogue: catalogueForModel,
         }),
@@ -221,11 +221,21 @@ export default async function handler(req: any, res: any) {
         };
       });
 
+    const garmentNotes = Array.isArray(visionAnalysis?.garments)
+      ? visionAnalysis.garments.slice(0, 4).map((garment: any) => [
+          safeText(garment?.item, "", 50),
+          safeText(garment?.visible_colour, "", 40),
+          safeText(garment?.pattern, "", 40),
+          safeText(garment?.material_guess, "", 40),
+          safeText(garment?.silhouette, "", 50),
+        ].filter(Boolean).join(", ")).filter(Boolean)
+      : [];
     const visionSummary = visionAnalysis
       ? [
-          ...(safeStringArray(visionAnalysis.garments, 4).map((item) => item)),
+          ...garmentNotes,
           ...safeStringArray(visionAnalysis.palette, 5),
           ...safeStringArray(visionAnalysis.aesthetic, 4),
+          ...safeStringArray(visionAnalysis.visible_style_notes, 4),
         ].join(" · ").slice(0, 400)
       : null;
 
