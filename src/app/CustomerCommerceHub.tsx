@@ -6,7 +6,7 @@ import { useShopData, useWishlist, type Product } from "./data";
 import type { CartLine, ShippingAddress } from "./useCommerce";
 
 type Section =
-  | "overview" | "cart" | "bargain" | "preorder" | "orders" | "wishlist"
+  | "overview" | "cart" | "checkout" | "bargain" | "preorder" | "orders" | "wishlist"
   | "notifications" | "community" | "outfits" | "wardrobe" | "events" | "assistant";
 
 type Commerce = {
