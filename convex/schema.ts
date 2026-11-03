@@ -145,6 +145,7 @@ export default defineSchema({
 
   bargainSessions: defineTable({
     userId: v.id("users"),
+    scope: v.optional(v.string()),
     status: v.string(),
     round: v.number(),
     expiresAt: v.number(),
