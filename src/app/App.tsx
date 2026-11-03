@@ -31,7 +31,7 @@ import {
   type ProductReview,
 } from "./data";
 import { useAuth, authErrorMessage, initialsOf, type SessionUser } from "./auth";
-import { useQuery, useAction, useMutation } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { SmartCommerceExtras } from "./SmartCommerceExtras";
 import { api } from "../../convex/_generated/api";
 type AppState = "splash" | "onboarding" | "login" | "otp" | "main";
@@ -905,41 +905,177 @@ function DiscoverScreen({ onProduct, wishlisted, onWishlist }: {
 
 // ─── AI SCREEN ───────────────────────────────────────────────────────────────
 
-function AIScreen() {
+function AIScreen({ sessionToken, onProduct }: { sessionToken?: string; onProduct: (product: Product) => void }) {
   const PRODUCTS = useShopData().products;
-  const searchProducts = useAction(api.aiStylist.search);
   const { ids: wishlisted, toggle: toggleWishlist } = useWishlist();
-  const [messages, setMessages] = useState([{ role: "ai", text: "Hi! I'm your AI Fashion Assistant ✨\\n\\nDescribe your occasion, budget, style, colour or preferred fabric. I'll search the real catalogue and include unavailable pieces you can wishlist." }]);
+  const [messages, setMessages] = useState<Array<{ role: "ai" | "user"; text: string; imagePreview?: string; context?: string }>>([
+    { role: "ai", text: "Hi! I'm your AI Fashion Stylist ✨\n\nTell me your occasion, budget, colours or preferred style. You can also upload an outfit or inspiration photo and I'll analyse the visible garments, then reason over our live catalogue to build recommendations." },
+  ]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
-  const [matches, setMatches] = useState<Array<Product & { stock?: number | null; reason: string }>>([]);
+  const [visionActive, setVisionActive] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [photo, setPhoto] = useState<{ dataUrl: string; preview: string; name: string } | null>(null);
+  const [matches, setMatches] = useState<Array<Product & { stock?: number | null; reason: string; role: string }>>([]);
+  const [styleResult, setStyleResult] = useState<any>(null);
   const [error, setError] = useState("");
-  const prompts = ["Breathable outfit for a summer wedding under ₹3000", "Minimal streetwear in black", "Comfortable oversized cotton clothing", "Formal outfit for an evening event"];
-  const send = async (text: string) => {
-    if (!text.trim() || typing) return;
-    setMessages((p) => [...p, { role: "user", text }]); setInput(""); setTyping(true); setError(""); setMatches([]);
+  const imageInput = useRef<HTMLInputElement>(null);
+  const prompts = ["Summer wedding outfit under ₹3000", "Minimal black streetwear", "Style this outfit with matching shoes", "Comfortable oversized cotton clothing"];
+
+  const readAsDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Could not read this image."));
+    reader.onerror = () => reject(new Error("Could not read this image."));
+    reader.readAsDataURL(blob);
+  });
+
+  const handlePhoto = async (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Choose an image file.");
+      return;
+    }
+    setUploadingImage(true);
+    setError("");
     try {
-      const result = await searchProducts({ prompt: text.trim() });
-      const mapped = result.matches.map((m: any) => ({ ...m, original: m.price, discount: 0, rating: 0, reviews: 0, img: PRODUCTS.find((p) => p.id === m.id)?.img ?? "", isNew: false, isTrending: false }));
-      setMatches(mapped); setMessages((p) => [...p, { role: "ai", text: result.message }]);
-    } catch (e: any) { setError(e?.message ?? "AI search is temporarily unavailable."); setMessages((p) => [...p, { role: "ai", text: "I couldn't complete the catalogue search. Please try again in a moment." }]); }
-    finally { setTyping(false); }
+      const bitmap = await createImageBitmap(file);
+      const longestSide = Math.max(bitmap.width, bitmap.height);
+      const scale = Math.min(1, 1280 / longestSide);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("This browser could not process the image.");
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((value) => value ? resolve(value) : reject(new Error("Could not compress this image.")), "image/jpeg", 0.82);
+      });
+      if (blob.size > 2_500_000) throw new Error("This photo is still too large. Choose a smaller image.");
+      const dataUrl = await readAsDataUrl(blob);
+      setPhoto({ dataUrl, preview: dataUrl, name: file.name.slice(0, 90) });
+    } catch (err: any) {
+      setError(err?.message ?? "Could not process this image.");
+    } finally {
+      setUploadingImage(false);
+      if (imageInput.current) imageInput.current.value = "";
+    }
   };
+
+  const send = async (rawText: string) => {
+    const text = rawText.trim();
+    if ((!text && !photo) || typing || uploadingImage) return;
+    if (!sessionToken) {
+      setError("Please sign in to use the AI Stylist.");
+      return;
+    }
+
+    const prompt = text || "Analyse this outfit and suggest pieces that would complete or refine the look.";
+    const attachedPhoto = photo;
+    const history = messages.slice(-8).map(({ role, text: messageText, context }) => ({ role, text: context ?? messageText }));
+    setMessages((current) => [...current, { role: "user", text: prompt, ...(attachedPhoto ? { imagePreview: attachedPhoto.preview } : {}) }]);
+    setInput("");
+    setPhoto(null);
+    setTyping(true);
+    setVisionActive(!!attachedPhoto);
+    setError("");
+    setMatches([]);
+    setStyleResult(null);
+
+    try {
+      const response = await fetch("/api/ai-stylist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionToken, prompt, imageDataUrl: attachedPhoto?.dataUrl, history }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "AI Stylist is temporarily unavailable.");
+
+      const mapped = (payload.matches ?? []).map((item: any) => {
+        const product = PRODUCTS.find((candidate) => candidate.id === item.id);
+        return product ? { ...product, ...item, original: product.original, discount: product.discount, rating: product.rating, reviews: product.reviews, img: product.img } : null;
+      }).filter(Boolean);
+      setMatches(mapped);
+      setStyleResult(payload);
+      const replyText = payload.message ?? "Here are the closest catalogue matches."; 
+const replyContext = [
+  replyText,
+  payload.visionSummary ? "Visual read: " + payload.visionSummary : "",
+  payload.outfitPlan ? "Outfit direction: " + payload.outfitPlan : "",
+].filter(Boolean).join("\n");
+setMessages((current) => [...current, { role: "ai", text: replyText, context: replyContext }]);
+    } catch (err: any) {
+      const message = err?.message ?? "AI Stylist is temporarily unavailable.";
+      setError(message);
+      setMessages((current) => [...current, { role: "ai", text: "I couldn't complete that styling request. Please try again." }]);
+    } finally {
+      setTyping(false);
+      setVisionActive(false);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
-      <div className="flex-shrink-0 bg-background/95 backdrop-blur-xl px-5 pt-2 pb-4 border-b border-border"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#7B61FF] to-[#4a3adb] flex items-center justify-center"><Bot size={19} className="text-white" /></div><div><h1 className="text-foreground font-bold text-sm" style={PP}>AI Stylist</h1><div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 bg-emerald-400 rounded-full" /><span className="text-emerald-600 dark:text-emerald-400 text-[10px] font-medium">Groq catalogue search</span></div></div></div></div>
-      <div className="flex-1 overflow-y-auto scrollbar-hide px-5 py-4 space-y-3">
-        {messages.map((msg, i) => <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>{msg.role === "ai" && <div className="w-7 h-7 rounded-full bg-[#7B61FF] flex items-center justify-center mr-2 flex-shrink-0 mt-auto"><Bot size={12} className="text-white" /></div>}<div className={`max-w-[82%] px-4 py-3 rounded-2xl text-xs leading-relaxed ${msg.role === "user" ? "bg-[#7B61FF] text-white rounded-br-sm" : "bg-secondary border border-border text-secondary-foreground rounded-bl-sm"}`} style={{ whiteSpace: "pre-line" }}>{msg.text}</div></div>)}
-        {typing && <div className="text-xs text-muted-foreground pl-9">Searching product descriptions…</div>}{error && <p className="text-xs text-red-500">{error}</p>}
-        {matches.length > 0 && <div className="grid grid-cols-2 gap-2">{matches.map((p) => <div key={p.id} className="rounded-xl overflow-hidden bg-secondary border border-border"><div className="aspect-square overflow-hidden relative"><img src={p.img} alt={p.name} className="w-full h-full object-cover" />{p.stock === 0 && <span className="absolute top-2 left-2 bg-amber-500 text-white text-[9px] font-bold px-2 py-1 rounded-full">Out of stock</span>}</div><div className="p-2"><p className="text-foreground text-[11px] font-semibold">{p.name}</p><p className="text-[#7B61FF] text-[11px] font-bold">{fmt(p.price)}</p><p className="text-muted-foreground text-[10px] mt-1">{p.reason}</p>{p.stock === 0 ? <button onClick={() => toggleWishlist(p.id)} className="mt-2 text-[10px] font-bold text-[#7B61FF]">{wishlisted.includes(p.id) ? "♥ Wishlisted" : "♡ Add to wishlist"}</button> : <span className="text-[10px] text-emerald-600">{p.stock == null ? "Availability not tracked" : "In stock"}</span>}</div></div>)}</div>}
-        {matches.length === 0 && messages.length > 1 && !typing && !error && <p className="text-xs text-muted-foreground text-center">No matching products found yet.</p>}
+      <div className="flex-shrink-0 bg-background/95 backdrop-blur-xl px-5 pt-2 pb-4 border-b border-border">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#7B61FF] to-[#4a3adb] flex items-center justify-center"><Bot size={19} className="text-white" /></div>
+          <div className="min-w-0">
+            <h1 className="text-foreground font-bold text-sm" style={PP}>AI Stylist</h1>
+            <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 bg-emerald-400 rounded-full" /><span className="text-emerald-600 dark:text-emerald-400 text-[10px] font-medium">Qwen 3.8 vision · GPT-OSS 120B reasoning</span></div>
+          </div>
+        </div>
+        {!sessionToken && <p className="mt-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 text-[11px] p-3">Sign in to activate AI Stylist. Recommendations use your session and the store's live catalogue.</p>}
       </div>
-      {messages.length <= 1 && <div className="flex-shrink-0 px-5 pb-3 overflow-x-auto scrollbar-hide"><div className="flex gap-2 w-max">{prompts.map((p) => <button key={p} onClick={() => send(p)} className="px-3 py-2 bg-secondary border border-border rounded-full text-[11px] text-muted-foreground whitespace-nowrap">{p}</button>)}</div></div>}
-      <div className="flex-shrink-0 px-5 pb-4 pt-2 border-t border-border bg-background/95 backdrop-blur-xl"><div className="flex items-center gap-2 bg-secondary border border-border rounded-2xl px-4 py-3"><input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send(input)} placeholder="Describe your perfect outfit..." className="flex-1 bg-transparent text-foreground text-sm outline-none placeholder:text-muted-foreground/60" /><button onClick={() => send(input)} disabled={typing} className="w-7 h-7 bg-[#7B61FF] rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-50"><Send size={12} className="text-white" /></button></div></div>
+
+      <div className="flex-1 overflow-y-auto scrollbar-hide px-5 py-4 space-y-3">
+        {messages.map((msg, index) => (
+          <div key={index} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+            {msg.role === "ai" && <div className="w-7 h-7 rounded-full bg-[#7B61FF] flex items-center justify-center mr-2 flex-shrink-0 mt-auto"><Bot size={12} className="text-white" /></div>}
+            <div className={`max-w-[84%] px-4 py-3 rounded-2xl text-xs leading-relaxed ${msg.role === "user" ? "bg-[#7B61FF] text-white rounded-br-sm" : "bg-secondary border border-border text-secondary-foreground rounded-bl-sm"}`}>
+              {msg.imagePreview && <img src={msg.imagePreview} alt="Outfit inspiration" className="w-28 h-32 object-cover rounded-xl mb-2" />}
+              <p style={{ whiteSpace: "pre-line" }}>{msg.text}</p>
+            </div>
+          </div>
+        ))}
+        {typing && <div className="text-xs text-muted-foreground pl-9">{visionActive ? "Analysing the outfit photo and reasoning over the catalogue…" : "Reasoning over your style request and the live catalogue…"}</div>}
+        {error && <p className="text-xs text-red-500">{error}</p>}
+
+        {styleResult?.visionSummary && <div className="rounded-xl border border-[#7B61FF]/20 bg-[#7B61FF]/5 p-3"><p className="text-[10px] uppercase tracking-wider text-[#7B61FF] font-bold mb-1">Visual outfit read</p><p className="text-xs text-foreground">{styleResult.visionSummary}</p></div>}
+        {styleResult?.outfitPlan && <div className="rounded-xl border border-border bg-card p-3"><p className="text-[10px] uppercase tracking-wider text-[#7B61FF] font-bold mb-1">Outfit direction</p><p className="text-xs text-foreground">{styleResult.outfitPlan}</p></div>}
+        {!!styleResult?.colourSuggestions?.length && <div className="flex flex-wrap gap-1.5">{styleResult.colourSuggestions.map((colour: string) => <span key={colour} className="rounded-full bg-secondary border border-border px-2.5 py-1 text-[10px] text-foreground">{colour}</span>)}</div>}
+        {!!styleResult?.stylingTips?.length && <div className="rounded-xl border border-border bg-card p-3"><p className="text-[10px] uppercase tracking-wider text-[#7B61FF] font-bold mb-2">Styling tips</p><ul className="space-y-1.5">{styleResult.stylingTips.map((tip: string, index: number) => <li key={index} className="text-xs text-foreground flex gap-2"><span className="text-[#7B61FF]">•</span>{tip}</li>)}</ul></div>}
+
+        {matches.length > 0 && <div><p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold mb-2">Catalogue picks</p><div className="grid grid-cols-2 gap-2">{matches.map((p) => (
+          <div key={p.id} className="rounded-xl overflow-hidden bg-secondary border border-border">
+            <button onClick={() => onProduct(p)} className="w-full text-left">
+              <div className="aspect-square overflow-hidden relative"><img src={p.img} alt={p.name} className="w-full h-full object-cover" />{p.stock === 0 && <span className="absolute top-2 left-2 bg-amber-500 text-white text-[9px] font-bold px-2 py-1 rounded-full">Out of stock</span>}</div>
+              <div className="p-2"><p className="text-[9px] text-[#7B61FF] font-semibold uppercase">{p.role}</p><p className="text-foreground text-[11px] font-semibold">{p.name}</p><p className="text-[#7B61FF] text-[11px] font-bold">{fmt(p.price)}</p><p className="text-muted-foreground text-[10px] mt-1">{p.reason}</p></div>
+            </button>
+            <div className="px-2 pb-2 flex items-center justify-between gap-2">
+              <span className={p.stock === 0 ? "text-[10px] text-amber-600" : "text-[10px] text-emerald-600"}>{p.stock === 0 ? "Out of stock" : p.stock == null ? "Availability not tracked" : "In stock"}</span>
+              <button onClick={() => toggleWishlist(p.id)} className="text-[10px] font-bold text-[#7B61FF]">{wishlisted.includes(p.id) ? "♥ Saved" : "♡ Wishlist"}</button>
+            </div>
+          </div>
+        ))}</div></div>}
+        {matches.length === 0 && messages.length > 1 && !typing && !error && styleResult && <p className="text-xs text-muted-foreground text-center">No matching products found for this request.</p>}
+      </div>
+
+      {messages.length <= 1 && <div className="flex-shrink-0 px-5 pb-3 overflow-x-auto scrollbar-hide"><div className="flex gap-2 w-max">{prompts.map((prompt) => <button key={prompt} onClick={() => send(prompt)} disabled={!sessionToken || typing} className="px-3 py-2 bg-secondary border border-border rounded-full text-[11px] text-muted-foreground whitespace-nowrap disabled:opacity-50">{prompt}</button>)}</div></div>}
+
+      <div className="flex-shrink-0 px-5 pb-4 pt-2 border-t border-border bg-background/95 backdrop-blur-xl">
+        {photo && <div className="flex items-center gap-2 mb-2 rounded-xl bg-secondary border border-border p-2"><img src={photo.preview} alt="Selected outfit" className="w-11 h-12 object-cover rounded-lg" /><span className="flex-1 min-w-0 truncate text-[10px] text-muted-foreground">{photo.name}</span><button onClick={() => setPhoto(null)} className="w-7 h-7 rounded-full bg-background flex items-center justify-center" aria-label="Remove photo"><X size={13} /></button></div>}
+        <div className="flex items-center gap-2 bg-secondary border border-border rounded-2xl px-3 py-2.5">
+          <input ref={imageInput} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => void handlePhoto(event.target.files?.[0])} />
+          <button onClick={() => imageInput.current?.click()} disabled={!sessionToken || typing || uploadingImage} className="w-8 h-8 rounded-full border border-border bg-background flex items-center justify-center text-muted-foreground disabled:opacity-40" title="Upload an outfit photo"><Camera size={14} /></button>
+          <input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void send(input)} placeholder="Describe your perfect outfit…" disabled={!sessionToken} className="flex-1 min-w-0 bg-transparent text-foreground text-sm outline-none placeholder:text-muted-foreground/60 disabled:opacity-50" />
+          <button onClick={() => void send(input)} disabled={!sessionToken || typing || uploadingImage || (!input.trim() && !photo)} className="w-8 h-8 bg-[#7B61FF] rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-40"><Send size={12} className="text-white" /></button>
+        </div>
+        <p className="text-[9px] text-muted-foreground mt-2 text-center">Your photo is sent to Groq for clothing analysis and is not saved to your Smart Fashion account.</p>
+      </div>
     </div>
   );
 }
-
 // ─── WISHLIST ─────────────────────────────────────────────────────────────────
 
 function WishlistScreen({ products, onProduct, onRemove }: {
@@ -2457,7 +2593,7 @@ export default function App() {
     switch (screen) {
       case "home": return <HomeScreen onProduct={openProduct} wishlisted={wishlisted} onWishlist={toggleWishlist} cartCount={cartItems.length} onCart={() => navigate("cart")} onNav={navigate} userName={auth.user?.name ?? "Guest"} />;
       case "discover": return <DiscoverScreen onProduct={openProduct} wishlisted={wishlisted} onWishlist={toggleWishlist} />;
-      case "ai": return <AIScreen />;
+      case "ai": return <AIScreen sessionToken={auth.user?.sessionToken} onProduct={openProduct} />;
       case "wishlist": return <WishlistScreen products={liveProducts.filter((p) => wishlisted.includes(p.id))} onProduct={openProduct} onRemove={toggleWishlist} />;
       case "profile": return <ProfileScreen onNav={navigate} user={auth.user ?? { name: "Guest", email: "", guest: true }} onSignOut={() => { auth.signOut(); setActiveTab("home"); setScreen("home"); setAppState("login"); }} />;
       case "product": return <ProductDetailScreen p={selectedProduct} onBack={goBack} wishlisted={wishlisted.includes(selectedProduct.id)} onWishlist={() => toggleWishlist(selectedProduct.id)} onAddToCart={() => addToCart(selectedProduct)} onBargain={() => navigate("bargain")} onCustomSize={() => navigate("custom-size")} cartCount={cartItems.length} onCart={() => navigate("cart")} />;

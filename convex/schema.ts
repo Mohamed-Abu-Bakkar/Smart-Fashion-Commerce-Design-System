@@ -256,6 +256,15 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_user", ["userEmail"]),
 
+  aiStylistUsage: defineTable({
+    userId: v.id("users"),
+    minuteStart: v.number(),
+    minuteCount: v.number(),
+    dayStart: v.number(),
+    dayCount: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user", ["userId"]),
+
   productReviews: defineTable({
     productId: v.number(),
     author: v.string(),
