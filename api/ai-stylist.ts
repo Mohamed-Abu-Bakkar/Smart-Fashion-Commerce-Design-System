@@ -81,7 +81,7 @@ function safeStringArray(value: unknown, maxItems = 6) {
     .map((item) => item.trim().slice(0, 100));
 }
 
-export const config = { maxDuration: 60 };
+export const config = { api: { bodyParser: { sizeLimit: "4mb" } }, maxDuration: 60 };
 
 export default async function handler(req: any, res: any) {
   res.setHeader("Cache-Control", "no-store, max-age=0");
@@ -113,8 +113,7 @@ export default async function handler(req: any, res: any) {
 
     // A fresh ConvexHttpClient per request avoids sharing customer credentials/state.
     const convex = new ConvexHttpClient(convexUrl);
-    const customer = await convex.query(api.aiStylist.authenticate, { token });
-    if (!customer) return sendError(res, 401, "Your session expired. Sign in again.");
+    await convex.mutation(api.aiStylist.consumeRequest, { token });
 
     const catalogue = await convex.query(api.aiStylist.catalog, {}) as CatalogueProduct[];
     if (!catalogue.length) {
@@ -141,6 +140,7 @@ export default async function handler(req: any, res: any) {
         model: VISION_MODEL,
         temperature: 0.1,
         max_completion_tokens: 1100,
+        reasoning_effort: "medium",
         reasoning_format: "hidden",
         response_format: { type: "json_object" },
         messages: [{
@@ -185,7 +185,7 @@ export default async function handler(req: any, res: any) {
       top_p: 0.95,
       max_completion_tokens: 4000,
       reasoning_effort: "medium",
-      reasoning_format: "hidden",
+      include_reasoning: false,
       response_format: { type: "json_object" },
       messages: [{
         role: "user",
@@ -249,14 +249,24 @@ export default async function handler(req: any, res: any) {
       models: { vision: imageDataUrl ? VISION_MODEL : null, reasoning: REASONING_MODEL },
     });
   } catch (error: any) {
-    const providerRateLimit = typeof error?.message === "string" && error.message.includes("Groq returned HTTP 429");
-    const invalidImage = typeof error?.message === "string" &&
-      (error.message.startsWith("Upload ") || error.message.startsWith("Image is too large") || error.message === "Invalid image upload.");
-    const status = providerRateLimit ? 429 : invalidImage ? 400 : 500;
+    const errorMessage = typeof error?.message === "string" ? error.message : "";
+    const providerRateLimit = errorMessage.includes("Groq returned HTTP 429");
+    const accountRateLimit = errorMessage.toLowerCase().includes("rate limit") || errorMessage.toLowerCase().includes("daily limit");
+    const unauthorised = errorMessage.toLowerCase().includes("session expired") ||
+      errorMessage.toLowerCase().includes("sign in") ||
+      errorMessage.toLowerCase().includes("not authorised");
+    const invalidImage = errorMessage.startsWith("Upload ") ||
+      errorMessage.startsWith("Image is too large") ||
+      errorMessage === "Invalid image upload.";
+    const status = providerRateLimit || accountRateLimit ? 429 : unauthorised ? 401 : invalidImage ? 400 : 500;
     return sendError(res, status, invalidImage
-      ? error.message
-      : providerRateLimit
-        ? "The AI Stylist is busy. Please try again shortly."
-        : "I couldn't complete the styling request. Please try again.");
+      ? errorMessage
+      : accountRateLimit
+        ? errorMessage
+        : providerRateLimit
+          ? "The AI Stylist is busy. Please try again shortly."
+          : unauthorised
+            ? "Your session expired. Sign in again."
+            : "The styling request could not be completed. Please try again.");
   }
 }
