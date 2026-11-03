@@ -399,7 +399,7 @@ export function useVotes() {
 
   const toggleRequestVote = useCallback(
     (requestId: number) => {
-      if (!email) {
+      if (!sessionToken) {
         setGuestVoted((prev) => (prev.includes(requestId) ? prev.filter((i) => i !== requestId) : [...prev, requestId]));
         return Promise.resolve({ voted: !guestVoted.includes(requestId) });
       }
