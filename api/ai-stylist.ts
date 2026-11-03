@@ -138,7 +138,8 @@ export default async function handler(req: any, res: any) {
     if (imageDataUrl) {
       visionAnalysis = await groqCompletion(groqKey, {
         model: VISION_MODEL,
-        temperature: 0.1,
+        temperature: 1.0,
+        top_p: 0.95,
         max_completion_tokens: 1100,
         reasoning_effort: "medium",
         reasoning_format: "hidden",
