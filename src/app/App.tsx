@@ -1595,78 +1595,106 @@ function CartScreen({ items, onBack, onCheckout, onRemove }: {
 
 // ─── CHECKOUT ─────────────────────────────────────────────────────────────────
 
-function CheckoutScreen({ onBack, onSuccess, userName }: { onBack: () => void; onSuccess: () => void; userName: string }) {
-  const [payment, setPayment] = useState("upi");
+function CheckoutScreen({ onBack, onSuccess, userName, items, sessionToken }: { onBack: () => void; onSuccess: (order: any) => void; userName: string; items: Product[]; sessionToken?: string }) {
+  const startBargain = useMutation(api.commerce.startBargain);
+  const submitOffer = useMutation(api.commerce.submitOffer);
+  const placeOrder = useMutation(api.commerce.placeOrder);
+  const [bargainId, setBargainId] = useState<any>(null);
+  const [originalTotal, setOriginalTotal] = useState(0);
+  const [floorTotal, setFloorTotal] = useState(0);
+  const [offer, setOffer] = useState("");
+  const [counterOffer, setCounterOffer] = useState<number | null>(null);
+  const [round, setRound] = useState(0);
+  const [bargainStatus, setBargainStatus] = useState("loading");
+  const [payment, setPayment] = useState("mock_upi");
+  const [mockResult, setMockResult] = useState("success");
+  const [address, setAddress] = useState("");
+  const [phone, setPhone] = useState("");
   const [placing, setPlacing] = useState(false);
-  const handlePlace = () => { setPlacing(true); setTimeout(onSuccess, 2000); };
+  const [error, setError] = useState("");
+  const acceptedTotal = bargainStatus === "accepted" ? Number(counterOffer) : 0;
+
+  useEffect(() => {
+    let active = true;
+    if (!sessionToken) { setBargainStatus("error"); setError("Please sign in with a verified account to bargain and place an order."); return; }
+    if (!items.length) { setBargainStatus("error"); setError("Your cart is empty."); return; }
+    startBargain({ token: sessionToken, items: items.map((p) => ({ productId: p.id, quantity: 1 })) })
+      .then((result) => { if (!active) return; setBargainId(result.bargainId); setOriginalTotal(result.originalTotal); setFloorTotal(result.floorTotal); setOffer(String(Math.max(result.floorTotal, Math.floor(result.originalTotal * 0.9)))); setBargainStatus("open"); })
+      .catch((e: any) => { if (active) { setBargainStatus("error"); setError(e?.message ?? "Could not start cart bargaining."); } });
+    return () => { active = false; };
+  }, [sessionToken, items.map((p) => p.id).join(",")]);
+
+  const handleOffer = async () => {
+    if (!bargainId || !sessionToken) return;
+    setError("");
+    try {
+      const result = await submitOffer({ token: sessionToken, bargainId, offer: Number(offer) });
+      setRound(result.round);
+      if (result.status === "accepted") { setCounterOffer(result.total); setBargainStatus("accepted"); }
+      else { setCounterOffer(result.counterOffer); setOffer(String(result.counterOffer)); setBargainStatus("countered"); }
+    } catch (e: any) { setError(e?.message ?? "Offer could not be submitted."); }
+  };
+
+  const handlePlace = async () => {
+    if (!sessionToken || !bargainId || bargainStatus !== "accepted") return;
+    setPlacing(true); setError("");
+    try {
+      const result = await placeOrder({ token: sessionToken, bargainId, address, phone, paymentMode: payment, mockUpiSuccess: payment === "mock_upi" ? mockResult === "success" : undefined });
+      onSuccess(result);
+    } catch (e: any) { setError(e?.message ?? "Could not place the order."); }
+    finally { setPlacing(false); }
+  };
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex-shrink-0 flex items-center gap-3 px-5 pt-4 pb-4 border-b border-border">
         <button onClick={onBack} className="w-9 h-9 rounded-full bg-secondary border border-border flex items-center justify-center"><ArrowLeft size={17} className="text-foreground" /></button>
-        <h1 className="text-foreground font-bold flex-1" style={PP}>Checkout</h1>
-        <div className="flex items-center gap-1"><ShieldCheck size={12} className="text-emerald-600 dark:text-emerald-400" /><span className="text-emerald-600 dark:text-emerald-400 text-xs">Secure</span></div>
+        <h1 className="text-foreground font-bold flex-1" style={PP}>Cart negotiation & checkout</h1>
+        <span className="text-[10px] text-amber-600 font-bold">TEST MODE</span>
       </div>
-      <div className="flex-1 overflow-y-auto scrollbar-hide">
-        <div className="px-5 pt-4 pb-6 space-y-4">
-          <div className="bg-card border border-border rounded-2xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2"><MapPin size={14} className="text-[#7B61FF]" /><p className="text-foreground font-semibold text-sm">Delivery Address</p></div>
-              <button className="text-[#7B61FF] text-xs font-bold">Change</button>
-            </div>
-            <p className="text-foreground text-sm font-medium">{userName}</p>
-            <p className="text-muted-foreground text-xs mt-0.5 leading-relaxed">42, Sunrise Apartments, Bandra West<br />Mumbai, Maharashtra 400050</p>
-            <div className="flex items-center gap-2 mt-2">
-              <span className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[9px] font-bold px-2 py-0.5 rounded-full">Home</span>
-              <span className="text-muted-foreground text-[10px]">+91 98765 43210</span>
-            </div>
-          </div>
-          <div className="bg-card border border-border rounded-2xl p-4">
-            <div className="flex items-center gap-2 mb-3"><Truck size={14} className="text-[#7B61FF]" /><p className="text-foreground font-semibold text-sm">Delivery</p></div>
-            {[{ id: "std", label: "Standard", sub: "Jan 17–19", price: "FREE", sel: true }, { id: "exp", label: "Express", sub: "Tomorrow", price: "₹149", sel: false }].map((d) => (
-              <div key={d.id} className="flex items-center gap-3 py-2.5 border-b border-border last:border-0 cursor-pointer">
-                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${d.sel ? "border-[#7B61FF]" : "border-muted-foreground/40"}`}>{d.sel && <div className="w-2 h-2 rounded-full bg-[#7B61FF]" />}</div>
-                <div className="flex-1"><p className="text-foreground text-xs font-semibold">{d.label}</p><p className="text-muted-foreground text-[10px]">{d.sub}</p></div>
-                <span className={`text-xs font-bold ${d.price === "FREE" ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"}`}>{d.price}</span>
-              </div>
-            ))}
-          </div>
-          <div className="bg-card border border-border rounded-2xl p-4">
-            <div className="flex items-center gap-2 mb-3"><CreditCard size={14} className="text-[#7B61FF]" /><p className="text-foreground font-semibold text-sm">Payment</p></div>
-            {[{ id: "upi", label: "UPI", sub: "GPay, PhonePe, Paytm", icon: Zap }, { id: "card", label: "Credit / Debit Card", sub: "Visa, Mastercard, RuPay", icon: CreditCard }, { id: "wallet", label: "Wallet", sub: "₹2,400 available", icon: Wallet }, { id: "cod", label: "Cash on Delivery", sub: "Pay at doorstep", icon: Banknote }].map((m) => {
-              const PayIcon = m.icon;
-              return (
-              <div key={m.id} onClick={() => setPayment(m.id)} className="flex items-center gap-3 py-2.5 border-b border-border last:border-0 cursor-pointer">
-                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${payment === m.id ? "border-[#7B61FF]" : "border-muted-foreground/40"}`}>{payment === m.id && <div className="w-2 h-2 rounded-full bg-[#7B61FF]" />}</div>
-                <span className="w-8 h-8 rounded-xl bg-secondary border border-border flex items-center justify-center flex-shrink-0">
-                  <PayIcon size={14} className={payment === m.id ? "text-[#7B61FF]" : "text-muted-foreground"} />
-                </span>
-                <div className="flex-1"><p className="text-foreground text-xs font-semibold">{m.label}</p><p className="text-muted-foreground text-[10px]">{m.sub}</p></div>
-              </div>
-              );
-            })}
-          </div>
-          <div className="bg-card border border-border rounded-2xl p-4 space-y-2">
-            <p className="text-foreground font-semibold text-sm mb-3">Order Total</p>
-            {[{ l: "1 item", v: "₹3,299" }, { l: "Delivery", v: "FREE", g: true }, { l: "Discount (STYLE10)", v: "-₹330", g: true }].map(({ l, v, g }) => (
-              <div key={l} className="flex justify-between"><span className="text-muted-foreground text-xs">{l}</span><span className={`text-xs font-medium ${g ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"}`}>{v}</span></div>
-            ))}
-            <div className="border-t border-border pt-2 flex justify-between"><span className="text-foreground font-bold text-sm">Total</span><span className="text-foreground font-bold text-sm">₹2,969</span></div>
-          </div>
+      <div className="flex-1 overflow-y-auto scrollbar-hide"><div className="px-5 pt-4 pb-6 space-y-4">
+        <div className="bg-card border border-border rounded-2xl p-4">
+          <p className="text-foreground font-semibold text-sm mb-3">Your cart · {items.length} items</p>
+          {items.map((p) => <div key={p.id} className="flex justify-between py-2 border-b border-border last:border-0"><span className="text-xs text-foreground">{p.name}</span><span className="text-xs font-semibold">{fmt(p.price)}</span></div>)}
+          <div className="flex justify-between pt-3"><span className="text-xs text-muted-foreground">Cart total</span><b className="text-sm">{fmt(originalTotal || items.reduce((s,p)=>s+p.price,0))}</b></div>
         </div>
-      </div>
-      <div className="flex-shrink-0 px-4 py-3 bg-background border-t border-border">
-        <button onClick={handlePlace} disabled={placing}
-          className="w-full bg-[#7B61FF] text-white py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-80">
-          {placing ? <><RefreshCw size={15} className="animate-spin" />Placing Order...</> : "Place Order · ₹2,969"}
-        </button>
-      </div>
+        <div className="bg-card border border-[#7B61FF]/30 rounded-2xl p-4 space-y-3">
+          <div className="flex items-center gap-2"><Tag size={15} className="text-[#7B61FF]"/><p className="text-foreground font-semibold text-sm">Whole-cart bargaining</p></div>
+          {bargainStatus === "loading" && <p className="text-xs text-muted-foreground">Checking product floors and stock…</p>}
+          {bargainStatus === "error" && <p className="text-xs text-red-500">{error}</p>}
+          {(bargainStatus === "open" || bargainStatus === "countered") && <>
+            <p className="text-xs text-muted-foreground">Round {round + 1} of 3 · Offer expires in 10 minutes. Minimum allowed total: {fmt(floorTotal)}.</p>
+            <label className="block text-xs text-muted-foreground">Your total offer (₹)<input type="number" min={floorTotal} max={originalTotal} value={offer} onChange={(e)=>setOffer(e.target.value)} className="mt-1 w-full rounded-xl bg-secondary border border-border p-3 text-sm text-foreground"/></label>
+            {counterOffer !== null && <p className="text-xs text-[#7B61FF] font-semibold">Store counter-offer: {fmt(counterOffer)}</p>}
+            <button onClick={handleOffer} className="w-full bg-[#7B61FF] text-white py-3 rounded-xl text-xs font-bold">Submit cart offer</button>
+          </>}
+          {bargainStatus === "accepted" && <div><p className="text-emerald-600 text-xs font-bold">Cart offer accepted · Round {round}/3</p><p className="text-2xl font-bold text-foreground mt-1">{fmt(acceptedTotal)}</p><p className="text-xs text-muted-foreground">You save {fmt(originalTotal-acceptedTotal)} before delivery.</p></div>}
+        </div>
+        {bargainStatus === "accepted" && <>
+          <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
+            <p className="text-foreground font-semibold text-sm">Delivery details</p>
+            <p className="text-xs text-muted-foreground">Delivering to {userName}</p>
+            <label className="block text-xs text-muted-foreground">Full address<textarea value={address} onChange={(e)=>setAddress(e.target.value)} rows={3} placeholder="House/flat, street, area, city, state and PIN code" className="mt-1 w-full rounded-xl bg-secondary border border-border p-3 text-sm text-foreground"/></label>
+            <label className="block text-xs text-muted-foreground">Phone number<input value={phone} onChange={(e)=>setPhone(e.target.value)} placeholder="+91 98765 43210" className="mt-1 w-full rounded-xl bg-secondary border border-border p-3 text-sm text-foreground"/></label>
+          </div>
+          <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
+            <p className="text-foreground font-semibold text-sm">Payment method</p>
+            <button onClick={()=>setPayment("mock_upi")} className={`w-full text-left p-3 rounded-xl border ${payment==="mock_upi"?"border-[#7B61FF] bg-[#7B61FF]/5":"border-border"}`}><b className="text-xs text-foreground">UPI · Mock gateway</b><p className="text-[10px] text-muted-foreground">Simulated payment only. No money is transferred.</p></button>
+            <button onClick={()=>setPayment("cod")} className={`w-full text-left p-3 rounded-xl border ${payment==="cod"?"border-[#7B61FF] bg-[#7B61FF]/5":"border-border"}`}><b className="text-xs text-foreground">Cash on Delivery</b><p className="text-[10px] text-muted-foreground">Payment remains pending until collected.</p></button>
+            {payment==="mock_upi" && <div className="flex gap-2"><button onClick={()=>setMockResult("success")} className={`flex-1 p-2 rounded-lg text-xs ${mockResult==="success"?"bg-emerald-600 text-white":"bg-secondary text-foreground"}`}>Simulate success</button><button onClick={()=>setMockResult("failure")} className={`flex-1 p-2 rounded-lg text-xs ${mockResult==="failure"?"bg-red-600 text-white":"bg-secondary text-foreground"}`}>Simulate failure</button></div>}
+          </div>
+          <div className="bg-card border border-border rounded-2xl p-4 flex justify-between"><span className="text-sm font-bold text-foreground">Payable total</span><b className="text-sm text-foreground">{fmt(acceptedTotal)}</b></div>
+        </>}
+        {error && bargainStatus !== "error" && <p className="text-xs text-red-500">{error}</p>}
+      </div></div>
+      {bargainStatus === "accepted" && <div className="flex-shrink-0 px-4 py-3 bg-background border-t border-border"><button onClick={handlePlace} disabled={placing || !address.trim() || !phone.trim()} className="w-full bg-[#7B61FF] text-white py-4 rounded-2xl font-bold text-sm disabled:opacity-50">{placing ? "Processing…" : `Place order · ${fmt(acceptedTotal)}`}</button></div>}
     </div>
   );
 }
 
 // ─── ORDERS ───────────────────────────────────────────────────────────────────
 
-function OrdersScreen({ onBack }: { onBack: () => void }) {
+function OrdersScreen({ onBack, order }: { onBack: () => void; order?: any }) {
   const PRODUCTS = useShopData().products; // live (Convex) with mock fallback
   const steps = [
     { label: "Order Placed", time: "Today, 2:34 PM", done: true },
@@ -1686,8 +1714,8 @@ function OrdersScreen({ onBack }: { onBack: () => void }) {
           <div className="bg-gradient-to-br from-emerald-500/12 to-transparent border border-emerald-500/20 rounded-3xl p-6 flex flex-col items-center text-center">
             <div className="w-16 h-16 rounded-full bg-emerald-500 flex items-center justify-center mb-3"><Check size={28} className="text-white" strokeWidth={2.5} /></div>
             <h2 className="text-foreground font-bold text-xl mb-1" style={PP}>Order Placed! 🎉</h2>
-            <p className="text-muted-foreground text-sm mb-4">Your {PRODUCTS[0].name} is on its way</p>
-            <div className="bg-black/30 rounded-xl px-4 py-2"><span className="text-muted-foreground text-xs">Order ID: </span><span className="text-foreground text-xs font-mono font-bold">#SFC-2025-7842</span></div>
+            <p className="text-muted-foreground text-sm mb-4">Your order has been recorded</p>
+            <div className="bg-black/30 rounded-xl px-4 py-2"><span className="text-muted-foreground text-xs">Order ID: </span><span className="text-foreground text-xs font-mono font-bold">{order?.orderCode ?? "Order details unavailable"}</span></div>
           </div>
           <div className="bg-card border border-border rounded-2xl flex overflow-hidden">
             <img src={PRODUCTS[0].img} alt={PRODUCTS[0].name} className="w-24 h-24 object-cover bg-secondary flex-shrink-0" />
@@ -1695,7 +1723,7 @@ function OrdersScreen({ onBack }: { onBack: () => void }) {
               <p className="text-[9px] text-[#7B61FF] font-bold tracking-widest uppercase">{PRODUCTS[0].brand}</p>
               <p className="text-foreground text-sm font-semibold">{PRODUCTS[0].name}</p>
               <p className="text-muted-foreground text-[10px] mt-0.5">Size M · Bargain price applied</p>
-              <p className="text-foreground font-bold text-sm mt-1">₹2,969</p>
+              <p className="text-foreground font-bold text-sm mt-1">{fmt(order?.total ?? 0)}</p>
             </div>
           </div>
           <div className="bg-card border border-border rounded-2xl p-4">
@@ -2349,7 +2377,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [activeTab, setActiveTab] = useState<MainTab>("home");
   const [selectedProduct, setSelectedProduct] = useState<Product>(PRODUCTS[0]);
-  const [cartItems, setCartItems] = useState<Product[]>([]);
+  const [cartItems, setCartItems] = useState<Product[]>([]);\n  const [lastOrder, setLastOrder] = useState<any>(null);
   const { ids: wishlisted, toggle: toggleWishlist } = useWishlist(); // per-user, DB-backed
   const [pending, setPending] = useState<{ email: string; code: string } | null>(null);
   const [resendTick, setResendTick] = useState(0);
@@ -2429,8 +2457,8 @@ export default function App() {
       case "product": return <ProductDetailScreen p={selectedProduct} onBack={goBack} wishlisted={wishlisted.includes(selectedProduct.id)} onWishlist={() => toggleWishlist(selectedProduct.id)} onAddToCart={() => addToCart(selectedProduct)} onBargain={() => navigate("bargain")} onCustomSize={() => navigate("custom-size")} cartCount={cartItems.length} onCart={() => navigate("cart")} />;
       case "bargain": return <BargainingScreen p={selectedProduct} onBack={goBack} />;
       case "cart": return <CartScreen items={cartItems} onBack={goBack} onCheckout={() => navigate("checkout")} onRemove={(id) => setCartItems((prev) => prev.filter((i) => i.id !== id))} />;
-      case "checkout": return <CheckoutScreen onBack={goBack} onSuccess={() => { setCartItems([]); navigate("orders"); }} userName={auth.user?.name ?? "Guest"} />;
-      case "orders": return <OrdersScreen onBack={goBack} />;
+      case "checkout": return <CheckoutScreen onBack={goBack} onSuccess={(order) => { setCartItems([]); setLastOrder(order); navigate("orders"); }} userName={auth.user?.name ?? "Guest"} items={cartItems} sessionToken={auth.user?.sessionToken} />;
+      case "orders": return <OrdersScreen onBack={goBack} order={lastOrder} />;
       case "notifications": return <NotificationsScreen onBack={goBack} />;
       case "custom-size": return <CustomSizeScreen onBack={goBack} />;
       case "community": return <CommunityScreen onBack={goBack} />;
