@@ -1473,7 +1473,6 @@ function BargainingScreen({ p, onBack, onAddToCart, sessionToken }: { p: Product
   const startProductBargain = useMutation(api.commerce.startProductBargain);
   const submitOffer = useMutation(api.commerce.submitOffer);
   const [bargainId, setBargainId] = useState<any>(null);
-  const [floorPrice, setFloorPrice] = useState(0);
   const [originalPrice, setOriginalPrice] = useState(p.price);
   const [offer, setOffer] = useState("");
   const [counterOffer, setCounterOffer] = useState<number | null>(null);
@@ -1490,9 +1489,8 @@ function BargainingScreen({ p, onBack, onAddToCart, sessionToken }: { p: Product
       .then((result) => {
         if (!active) return;
         setBargainId(result.bargainId);
-        setFloorPrice(result.floorPrice);
         setOriginalPrice(result.originalPrice);
-        setOffer(String(Math.max(result.floorPrice, Math.floor(result.originalPrice * 0.9))));
+        setOffer("");
         setStatus("open");
       })
       .catch((e: any) => { if (active) { setStatus("error"); setError(e?.message ?? "Could not start product bargaining."); } });
@@ -1502,8 +1500,8 @@ function BargainingScreen({ p, onBack, onAddToCart, sessionToken }: { p: Product
   const sendOffer = async () => {
     if (!bargainId || !sessionToken || busy) return;
     const amount = Number(offer);
-    if (!Number.isFinite(amount) || amount < floorPrice || amount > originalPrice) {
-      setError(`Offer must be between ${fmt(floorPrice)} and ${fmt(originalPrice)}.`);
+    if (!offer.trim() || !Number.isFinite(amount) || amount <= 0 || amount > originalPrice) {
+      setError("Enter your offer as a positive amount no higher than the listed price.");
       return;
     }
     setBusy(true); setError("");
@@ -1524,14 +1522,20 @@ function BargainingScreen({ p, onBack, onAddToCart, sessionToken }: { p: Product
   };
 
   const acceptCounter = async () => {
-    if (counterOffer === null) return;
-    setOffer(String(counterOffer));
+    if (counterOffer === null || !bargainId || !sessionToken || busy) return;
     setBusy(true); setError("");
     try {
-      const result = await submitOffer({ token: sessionToken!, bargainId, offer: counterOffer });
+      const result = await submitOffer({ token: sessionToken, bargainId, offer: counterOffer });
       setRound(result.round);
-      if (result.status === "accepted") { setAcceptedPrice(result.total); setStatus("accepted"); }
-      else { setCounterOffer(result.counterOffer); setOffer(String(result.counterOffer)); setStatus("countered"); }
+      if (result.status === "accepted") {
+        setAcceptedPrice(result.total);
+        setCounterOffer(null);
+        setStatus("accepted");
+      } else {
+        setCounterOffer(result.counterOffer);
+        setOffer(String(result.counterOffer));
+        setStatus("countered");
+      }
     } catch (e: any) { setError(e?.message ?? "Counter-offer could not be accepted."); }
     finally { setBusy(false); }
   };
@@ -1554,20 +1558,19 @@ function BargainingScreen({ p, onBack, onAddToCart, sessionToken }: { p: Product
             <img src={p.img} alt={p.name} className="w-16 h-16 rounded-xl object-cover bg-secondary"/>
             <div><p className="text-[9px] text-[#7B61FF] font-bold tracking-widest uppercase">{p.brand}</p><p className="text-foreground font-semibold text-sm">{p.name}</p><p className="text-muted-foreground text-[10px]">One item · Valid for 10 minutes</p></div>
           </div>
-          <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
-            <p className="text-muted-foreground text-[9px] font-bold uppercase tracking-wider">Price boundary · verified by store</p>
+          <div className="bg-card border border-border rounded-2xl p-4 space-y-2">
+            <p className="text-muted-foreground text-[9px] font-bold uppercase tracking-wider">Make your offer</p>
             <div className="flex justify-between"><span className="text-xs text-muted-foreground">Listed price</span><b className="text-sm text-foreground">{fmt(originalPrice)}</b></div>
-            <div className="flex justify-between"><span className="text-xs text-muted-foreground">Minimum allowed price</span><b className="text-sm text-emerald-600">{status === "loading" ? "Checking…" : fmt(floorPrice)}</b></div>
-            <p className="text-[10px] text-muted-foreground">Offers below the store's configured minimum are rejected by the server.</p>
+            <p className="text-[10px] text-muted-foreground">You choose what you'd like to pay. Smart Bargain checks the store's private pricing rules and responds with an acceptance or counter-offer.</p>
           </div>
-          {status === "loading" && <div className="bg-card rounded-2xl p-4 text-xs text-muted-foreground">Checking product availability and negotiation limits…</div>}
+          {status === "loading" && <div className="bg-card rounded-2xl p-4 text-xs text-muted-foreground">Checking product availability and bargain eligibility…</div>}
           {status === "error" && <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 text-xs text-red-500">{error}</div>}
           {(status === "open" || status === "countered") && <div className="bg-card border border-[#7B61FF]/30 rounded-2xl p-4 space-y-3">
-            <div className="flex justify-between items-center"><b className="text-sm text-foreground">Your offer</b><span className="text-[10px] text-muted-foreground">Round {round + 1} / 3</span></div>
-            <label className="block text-xs text-muted-foreground">Offer amount (₹)<input type="number" min={floorPrice} max={originalPrice - 1} value={offer} onChange={e=>setOffer(e.target.value)} className="mt-1 w-full rounded-xl bg-secondary border border-border p-3 text-foreground text-lg font-bold"/></label>
+            <div className="flex justify-between items-center"><b className="text-sm text-foreground">Your offer</b><span className="text-[10px] text-muted-foreground">Round {Math.min(round + 1, 3)} / 3</span></div>
+            <label className="block text-xs text-muted-foreground">Offer amount (₹)<input type="number" min={1} max={originalPrice} inputMode="decimal" value={offer} onChange={e=>setOffer(e.target.value)} placeholder="Enter your price" className="mt-1 w-full rounded-xl bg-secondary border border-border p-3 text-foreground text-lg font-bold"/></label>
             {counterOffer !== null && <div className="rounded-xl bg-[#7B61FF]/10 p-3"><p className="text-[10px] text-muted-foreground">Store counter-offer</p><b className="text-lg text-[#7B61FF]">{fmt(counterOffer)}</b><button disabled={busy} onClick={acceptCounter} className="mt-2 w-full rounded-xl bg-[#7B61FF] text-white py-2.5 text-xs font-bold">{busy ? "Submitting…" : "Accept counter-offer"}</button></div>}
-            <button disabled={busy} onClick={sendOffer} className="w-full bg-[#7B61FF] disabled:opacity-50 text-white py-3 rounded-xl text-xs font-bold">{busy ? "Submitting…" : "Submit offer"}</button>
-            <p className="text-[10px] text-muted-foreground">No artificial acceptance percentages. The store's price floor and negotiation rules decide the result.</p>
+            <button disabled={busy || !offer.trim() || round >= 3} onClick={sendOffer} className="w-full bg-[#7B61FF] disabled:opacity-50 text-white py-3 rounded-xl text-xs font-bold">{busy ? "Submitting…" : round >= 3 ? "Accept the final counter-offer" : "Submit offer"}</button>
+            <p className="text-[10px] text-muted-foreground">Your bid is checked privately. If it is below the store's acceptable range, the store responds with a counter-offer.</p>
           </div>}
           {status === "accepted" && acceptedPrice !== null && <div className="bg-emerald-500/10 border border-emerald-500/25 rounded-2xl p-4 space-y-3">
             <div className="flex items-center gap-2"><Check size={18} className="text-emerald-600"/><b className="text-sm text-emerald-600">Offer accepted</b></div>
@@ -1677,11 +1680,11 @@ function CheckoutScreen({ onBack, onSuccess, userName, items, sessionToken }: { 
   const placeOrder = useMutation(api.commerce.placeOrder);
   const [bargainId, setBargainId] = useState<any>(null);
   const [originalTotal, setOriginalTotal] = useState(0);
-  const [floorTotal, setFloorTotal] = useState(0);
   const [offer, setOffer] = useState("");
   const [counterOffer, setCounterOffer] = useState<number | null>(null);
   const [round, setRound] = useState(0);
   const [bargainStatus, setBargainStatus] = useState("loading");
+  const [bargainBusy, setBargainBusy] = useState(false);
   const [payment, setPayment] = useState("mock_upi");
   const [mockResult, setMockResult] = useState("success");
   const [address, setAddress] = useState("");
@@ -1695,20 +1698,56 @@ function CheckoutScreen({ onBack, onSuccess, userName, items, sessionToken }: { 
     if (!sessionToken) { setBargainStatus("error"); setError("Please sign in with a verified account to bargain and place an order."); return; }
     if (!items.length) { setBargainStatus("error"); setError("Your cart is empty."); return; }
     startBargain({ token: sessionToken, items: items.map((p) => ({ productId: Number(p.id), quantity: 1, sourceBargainId: (p as any).bargainSessionId })) })
-      .then((result) => { if (!active) return; setBargainId(result.bargainId); setOriginalTotal(result.originalTotal); setFloorTotal(result.floorTotal); setOffer(String(Math.max(result.floorTotal, Math.floor(result.originalTotal * 0.9)))); setBargainStatus("open"); })
+      .then((result) => {
+        if (!active) return;
+        setBargainId(result.bargainId);
+        setOriginalTotal(result.originalTotal);
+        setOffer("");
+        setBargainStatus("open");
+      })
       .catch((e: any) => { if (active) { setBargainStatus("error"); setError(e?.message ?? "Could not start cart bargaining."); } });
     return () => { active = false; };
   }, [sessionToken, items.map((p) => p.id).join(",")]);
 
   const handleOffer = async () => {
-    if (!bargainId || !sessionToken) return;
-    setError("");
+    if (!bargainId || !sessionToken || bargainBusy) return;
+    const amount = Number(offer);
+    if (!offer.trim() || !Number.isFinite(amount) || amount <= 0 || amount > originalTotal) {
+      setError("Enter a positive cart offer no higher than the listed cart total.");
+      return;
+    }
+    setBargainBusy(true); setError("");
     try {
-      const result = await submitOffer({ token: sessionToken, bargainId, offer: Number(offer) });
+      const result = await submitOffer({ token: sessionToken, bargainId, offer: amount });
       setRound(result.round);
-      if (result.status === "accepted") { setCounterOffer(result.total); setBargainStatus("accepted"); }
-      else { setCounterOffer(result.counterOffer); setOffer(String(result.counterOffer)); setBargainStatus("countered"); }
-    } catch (e: any) { setError(e?.message ?? "Offer could not be submitted."); }
+      if (result.status === "accepted") {
+        setCounterOffer(result.total);
+        setBargainStatus("accepted");
+      } else {
+        setCounterOffer(result.counterOffer);
+        setOffer(String(result.counterOffer));
+        setBargainStatus("countered");
+      }
+    } catch (e: any) { setError(e?.message ?? "Cart offer could not be submitted."); }
+    finally { setBargainBusy(false); }
+  };
+
+  const acceptCounter = async () => {
+    if (!sessionToken || !bargainId || counterOffer === null || bargainBusy) return;
+    setBargainBusy(true); setError("");
+    try {
+      const result = await submitOffer({ token: sessionToken, bargainId, offer: counterOffer });
+      setRound(result.round);
+      if (result.status === "accepted") {
+        setCounterOffer(result.total);
+        setBargainStatus("accepted");
+      } else {
+        setCounterOffer(result.counterOffer);
+        setOffer(String(result.counterOffer));
+        setBargainStatus("countered");
+      }
+    } catch (e: any) { setError(e?.message ?? "Counter-offer could not be accepted."); }
+    finally { setBargainBusy(false); }
   };
 
   const handlePlace = async () => {
@@ -1731,18 +1770,18 @@ function CheckoutScreen({ onBack, onSuccess, userName, items, sessionToken }: { 
       <div className="flex-1 overflow-y-auto scrollbar-hide"><div className="px-5 pt-4 pb-6 space-y-4">
         <div className="bg-card border border-border rounded-2xl p-4">
           <p className="text-foreground font-semibold text-sm mb-3">Your cart · {items.length} items</p>
-          {items.map((p) => <div key={p.id} className="flex justify-between py-2 border-b border-border last:border-0"><span className="text-xs text-foreground">{p.name}</span><span className="text-xs font-semibold">{fmt(p.price)}</span></div>)}
+          {items.map((p, index) => <div key={p.id + "-" + index} className="flex justify-between py-2 border-b border-border last:border-0"><span className="text-xs text-foreground">{p.name}</span><span className="text-xs font-semibold">{fmt(p.price)}</span></div>)}
           <div className="flex justify-between pt-3"><span className="text-xs text-muted-foreground">Cart total</span><b className="text-sm">{fmt(originalTotal || items.reduce((s,p)=>s+p.price,0))}</b></div>
         </div>
         <div className="bg-card border border-[#7B61FF]/30 rounded-2xl p-4 space-y-3">
           <div className="flex items-center gap-2"><Tag size={15} className="text-[#7B61FF]"/><p className="text-foreground font-semibold text-sm">Whole-cart bargaining</p></div>
-          {bargainStatus === "loading" && <p className="text-xs text-muted-foreground">Checking product floors and stock…</p>}
+          {bargainStatus === "loading" && <p className="text-xs text-muted-foreground">Checking product availability and store pricing policy…</p>}
           {bargainStatus === "error" && <p className="text-xs text-red-500">{error}</p>}
           {(bargainStatus === "open" || bargainStatus === "countered") && <>
-            <p className="text-xs text-muted-foreground">Round {round + 1} of 3 · Offer expires in 10 minutes. Minimum allowed total: {fmt(floorTotal)}.</p>
-            <label className="block text-xs text-muted-foreground">Your total offer (₹)<input type="number" min={floorTotal} max={originalTotal} value={offer} onChange={(e)=>setOffer(e.target.value)} className="mt-1 w-full rounded-xl bg-secondary border border-border p-3 text-sm text-foreground"/></label>
-            {counterOffer !== null && <p className="text-xs text-[#7B61FF] font-semibold">Store counter-offer: {fmt(counterOffer)}</p>}
-            <button onClick={handleOffer} className="w-full bg-[#7B61FF] text-white py-3 rounded-xl text-xs font-bold">Submit cart offer</button>
+            <p className="text-xs text-muted-foreground">Round {Math.min(round + 1, 3)} of 3 · Offer expires in 10 minutes. Submit your best total for the whole cart.</p>
+            <label className="block text-xs text-muted-foreground">Your total offer (₹)<input type="number" min={1} max={originalTotal} inputMode="decimal" value={offer} onChange={(e)=>setOffer(e.target.value)} placeholder="Enter your cart price" className="mt-1 w-full rounded-xl bg-secondary border border-border p-3 text-sm text-foreground"/></label>
+            {counterOffer !== null && <div className="rounded-xl bg-[#7B61FF]/10 p-3 space-y-2"><p className="text-xs text-muted-foreground">Store counter-offer</p><b className="text-lg text-[#7B61FF]">{fmt(counterOffer)}</b><button disabled={bargainBusy} onClick={acceptCounter} className="w-full bg-[#7B61FF] text-white py-2.5 rounded-xl text-xs font-bold disabled:opacity-50">{bargainBusy ? "Submitting…" : "Accept counter-offer"}</button></div>}
+            <button disabled={bargainBusy || !offer.trim() || round >= 3} onClick={handleOffer} className="w-full bg-[#7B61FF] text-white py-3 rounded-xl text-xs font-bold disabled:opacity-50">{bargainBusy ? "Submitting…" : round >= 3 ? "Accept the final counter-offer" : "Submit cart offer"}</button>
           </>}
           {bargainStatus === "accepted" && <div><p className="text-emerald-600 text-xs font-bold">Cart offer accepted · Round {round}/3</p><p className="text-2xl font-bold text-foreground mt-1">{fmt(acceptedTotal)}</p><p className="text-xs text-muted-foreground">You save {fmt(originalTotal-acceptedTotal)} before delivery.</p></div>}
         </div>
@@ -1755,18 +1794,19 @@ function CheckoutScreen({ onBack, onSuccess, userName, items, sessionToken }: { 
           </div>
           <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
             <p className="text-foreground font-semibold text-sm">Payment method</p>
-            <button onClick={()=>setPayment("mock_upi")} className={`w-full text-left p-3 rounded-xl border ${payment==="mock_upi"?"border-[#7B61FF] bg-[#7B61FF]/5":"border-border"}`}><b className="text-xs text-foreground">UPI · Mock gateway</b><p className="text-[10px] text-muted-foreground">Simulated payment only. No money is transferred.</p></button>
-            <button onClick={()=>setPayment("cod")} className={`w-full text-left p-3 rounded-xl border ${payment==="cod"?"border-[#7B61FF] bg-[#7B61FF]/5":"border-border"}`}><b className="text-xs text-foreground">Cash on Delivery</b><p className="text-[10px] text-muted-foreground">Payment remains pending until collected.</p></button>
-            {payment==="mock_upi" && <div className="flex gap-2"><button onClick={()=>setMockResult("success")} className={`flex-1 p-2 rounded-lg text-xs ${mockResult==="success"?"bg-emerald-600 text-white":"bg-secondary text-foreground"}`}>Simulate success</button><button onClick={()=>setMockResult("failure")} className={`flex-1 p-2 rounded-lg text-xs ${mockResult==="failure"?"bg-red-600 text-white":"bg-secondary text-foreground"}`}>Simulate failure</button></div>}
+            <button onClick={()=>setPayment("mock_upi")} className={payment === "mock_upi" ? "w-full text-left p-3 rounded-xl border border-[#7B61FF] bg-[#7B61FF]/5" : "w-full text-left p-3 rounded-xl border border-border"}><b className="text-xs text-foreground">UPI · Mock gateway</b><p className="text-[10px] text-muted-foreground">Simulated payment only. No money is transferred.</p></button>
+            <button onClick={()=>setPayment("cod")} className={payment === "cod" ? "w-full text-left p-3 rounded-xl border border-[#7B61FF] bg-[#7B61FF]/5" : "w-full text-left p-3 rounded-xl border border-border"}><b className="text-xs text-foreground">Cash on Delivery</b><p className="text-[10px] text-muted-foreground">Payment remains pending until collected.</p></button>
+            {payment==="mock_upi" && <div className="flex gap-2"><button onClick={()=>setMockResult("success")} className={mockResult === "success" ? "flex-1 p-2 rounded-lg text-xs bg-emerald-600 text-white" : "flex-1 p-2 rounded-lg text-xs bg-secondary text-foreground"}>Simulate success</button><button onClick={()=>setMockResult("failure")} className={mockResult === "failure" ? "flex-1 p-2 rounded-lg text-xs bg-red-600 text-white" : "flex-1 p-2 rounded-lg text-xs bg-secondary text-foreground"}>Simulate failure</button></div>}
           </div>
           <div className="bg-card border border-border rounded-2xl p-4 flex justify-between"><span className="text-sm font-bold text-foreground">Payable total</span><b className="text-sm text-foreground">{fmt(acceptedTotal)}</b></div>
         </>}
         {error && bargainStatus !== "error" && <p className="text-xs text-red-500">{error}</p>}
       </div></div>
-      {bargainStatus === "accepted" && <div className="flex-shrink-0 px-4 py-3 bg-background border-t border-border"><button onClick={handlePlace} disabled={placing || !address.trim() || !phone.trim()} className="w-full bg-[#7B61FF] text-white py-4 rounded-2xl font-bold text-sm disabled:opacity-50">{placing ? "Processing…" : `Place order · ${fmt(acceptedTotal)}`}</button></div>}
+      {bargainStatus === "accepted" && <div className="flex-shrink-0 px-4 py-3 bg-background border-t border-border"><button onClick={handlePlace} disabled={placing || !address.trim() || !phone.trim()} className="w-full bg-[#7B61FF] text-white py-4 rounded-2xl font-bold text-sm disabled:opacity-50">{placing ? "Processing…" : "Place order · " + fmt(acceptedTotal)}</button></div>}
     </div>
   );
 }
+
 
 // ─── ORDERS ───────────────────────────────────────────────────────────────────
 
