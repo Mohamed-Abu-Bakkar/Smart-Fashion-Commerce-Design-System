@@ -1496,148 +1496,113 @@ function ProductDetailScreen({ p, onBack, wishlisted, onWishlist, onAddToCart, o
 
 // ─── BARGAINING ───────────────────────────────────────────────────────────────
 
-function BargainingScreen({ p, onBack }: { p: Product; onBack: () => void }) {
-  const fairPrice = Math.round(p.price * 0.88);
-  const counterOffer = Math.round(p.price * 0.93);
-  const [offer, setOffer] = useState(fairPrice);
-  const [stage, setStage] = useState<"input" | "pending" | "counter" | "accepted">("input");
-  const pct = Math.min(95, Math.max(5, Math.round((1 - (offer / p.price - 0.75) / 0.25) * 100)));
+function BargainingScreen({ p, onBack, onAddToCart, sessionToken }: { p: Product; onBack: () => void; onAddToCart: (product: Product) => void; sessionToken?: string }) {
+  const startProductBargain = useMutation(api.commerce.startProductBargain);
+  const submitOffer = useMutation(api.commerce.submitOffer);
+  const [bargainId, setBargainId] = useState<any>(null);
+  const [floorPrice, setFloorPrice] = useState(0);
+  const [originalPrice, setOriginalPrice] = useState(p.price);
+  const [offer, setOffer] = useState("");
+  const [counterOffer, setCounterOffer] = useState<number | null>(null);
+  const [round, setRound] = useState(0);
+  const [status, setStatus] = useState<"loading" | "open" | "countered" | "accepted" | "error">("loading");
+  const [acceptedPrice, setAcceptedPrice] = useState<number | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (!sessionToken) { setStatus("error"); setError("Sign in to negotiate a product price."); return; }
+    startProductBargain({ token: sessionToken, productId: Number(p.id) })
+      .then((result) => {
+        if (!active) return;
+        setBargainId(result.bargainId);
+        setFloorPrice(result.floorPrice);
+        setOriginalPrice(result.originalPrice);
+        setOffer(String(Math.max(result.floorPrice, Math.floor(result.originalPrice * 0.9))));
+        setStatus("open");
+      })
+      .catch((e: any) => { if (active) { setStatus("error"); setError(e?.message ?? "Could not start product bargaining."); } });
+    return () => { active = false; };
+  }, [sessionToken, p.id]);
+
+  const sendOffer = async () => {
+    if (!bargainId || !sessionToken || busy) return;
+    const amount = Number(offer);
+    if (!Number.isFinite(amount) || amount < floorPrice || amount >= originalPrice) {
+      setError(`Offer must be at least ${fmt(floorPrice)} and below ${fmt(originalPrice)}.`);
+      return;
+    }
+    setBusy(true); setError("");
+    try {
+      const result = await submitOffer({ token: sessionToken, bargainId, offer: amount });
+      setRound(result.round);
+      if (result.status === "accepted") {
+        setAcceptedPrice(result.total);
+        setCounterOffer(null);
+        setStatus("accepted");
+      } else {
+        setCounterOffer(result.counterOffer);
+        setOffer(String(result.counterOffer));
+        setStatus("countered");
+      }
+    } catch (e: any) { setError(e?.message ?? "Offer could not be submitted."); }
+    finally { setBusy(false); }
+  };
+
+  const acceptCounter = async () => {
+    if (counterOffer === null) return;
+    setOffer(String(counterOffer));
+    setBusy(true); setError("");
+    try {
+      const result = await submitOffer({ token: sessionToken!, bargainId, offer: counterOffer });
+      setRound(result.round);
+      if (result.status === "accepted") { setAcceptedPrice(result.total); setStatus("accepted"); }
+      else { setCounterOffer(result.counterOffer); setOffer(String(result.counterOffer)); setStatus("countered"); }
+    } catch (e: any) { setError(e?.message ?? "Counter-offer could not be accepted."); }
+    finally { setBusy(false); }
+  };
+
+  const addNegotiatedProduct = () => {
+    if (acceptedPrice === null || !bargainId) return;
+    onAddToCart({ ...p, price: acceptedPrice, bargainSessionId: bargainId } as Product);
+  };
 
   return (
     <div className="h-full flex flex-col">
       <div className="flex-shrink-0 flex items-center gap-3 px-5 pt-4 pb-4 border-b border-border">
-        <button onClick={onBack} className="w-9 h-9 rounded-full bg-secondary border border-border flex items-center justify-center">
-          <ArrowLeft size={17} className="text-white" />
-        </button>
-        <div>
-          <h1 className="text-foreground font-bold" style={PP}>Smart Bargain</h1>
-          <p className="text-muted-foreground text-[10px]">AI-powered negotiation</p>
-        </div>
-        <div className="ml-auto flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-3 py-1">
-          <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />
-          <span className="text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold">Live</span>
-        </div>
+        <button onClick={onBack} className="w-9 h-9 rounded-full bg-secondary border border-border flex items-center justify-center"><ArrowLeft size={17} className="text-foreground" /></button>
+        <div><h1 className="text-foreground font-bold" style={PP}>Smart Bargain</h1><p className="text-muted-foreground text-[10px]">Live product-price negotiation</p></div>
+        <span className="ml-auto text-[10px] text-[#7B61FF] font-bold">UP TO 3 ROUNDS</span>
       </div>
       <div className="flex-1 overflow-y-auto scrollbar-hide">
         <div className="px-5 pt-4 pb-6 space-y-4">
           <div className="flex items-center gap-3 bg-card border border-border rounded-2xl p-3">
-            <img src={p.img} alt={p.name} className="w-16 h-16 rounded-xl object-cover bg-secondary flex-shrink-0" />
-            <div>
-              <p className="text-[9px] text-[#7B61FF] font-bold tracking-widest uppercase">{p.brand}</p>
-              <p className="text-foreground font-semibold text-sm">{p.name}</p>
-              <p className="text-muted-foreground text-[10px]">Size M · 3 color options</p>
-            </div>
+            <img src={p.img} alt={p.name} className="w-16 h-16 rounded-xl object-cover bg-secondary"/>
+            <div><p className="text-[9px] text-[#7B61FF] font-bold tracking-widest uppercase">{p.brand}</p><p className="text-foreground font-semibold text-sm">{p.name}</p><p className="text-muted-foreground text-[10px]">One item · Valid for 10 minutes</p></div>
           </div>
-
-          <div className="bg-card border border-border rounded-2xl p-4">
-            <p className="text-muted-foreground text-[9px] font-bold uppercase tracking-wider mb-3">Price Analysis</p>
-            <div className="space-y-2.5">
-              {[
-                { label: "Original Price", value: fmt(p.original), color: "text-muted-foreground" },
-                { label: "Current Price", value: fmt(p.price), color: "text-foreground" },
-                { label: "AI Fair Price", value: fmt(fairPrice), color: "text-[#7B61FF]", ai: true },
-              ].map(({ label, value, color, ai }) => (
-                <div key={label} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground text-xs">{label}</span>
-                    {ai && <span className="bg-[#7B61FF]/20 text-[#7B61FF] text-[8px] font-bold px-1.5 py-0.5 rounded-full">AI</span>}
-                  </div>
-                  <span className={`font-bold text-sm ${color}`}>{value}</span>
-                </div>
-              ))}
-            </div>
+          <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
+            <p className="text-muted-foreground text-[9px] font-bold uppercase tracking-wider">Price boundary · verified by store</p>
+            <div className="flex justify-between"><span className="text-xs text-muted-foreground">Listed price</span><b className="text-sm text-foreground">{fmt(originalPrice)}</b></div>
+            <div className="flex justify-between"><span className="text-xs text-muted-foreground">Minimum allowed price</span><b className="text-sm text-emerald-600">{status === "loading" ? "Checking…" : fmt(floorPrice)}</b></div>
+            <p className="text-[10px] text-muted-foreground">Offers below the store's configured minimum are rejected by the server.</p>
           </div>
-
-          <div className="space-y-3">
-            <div className="flex gap-2">
-              <div className="w-7 h-7 rounded-full bg-[#7B61FF] flex items-center justify-center flex-shrink-0">
-                <Bot size={12} className="text-white" />
-              </div>
-              <div className="bg-secondary border border-border rounded-2xl rounded-bl-sm px-4 py-3 flex-1">
-                <p className="text-secondary-foreground text-xs leading-relaxed">
-                  Market data says <span className="text-[#7B61FF] font-bold">{fmt(fairPrice)}</span> is the sweet spot for the {p.name}. Sellers accept 68% of offers in this range. 🎯
-                </p>
-              </div>
-            </div>
-
-            {stage === "input" && (
-              <div className="bg-card border border-border rounded-2xl p-4 space-y-4">
-                <p className="text-muted-foreground text-xs font-semibold">Your Offer</p>
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground text-2xl font-bold">₹</span>
-                  <input type="number" value={offer} onChange={(e) => setOffer(Number(e.target.value))}
-                    className="flex-1 bg-transparent text-foreground text-2xl font-bold outline-none border-b border-border pb-1" />
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <p className="text-muted-foreground text-[10px]">Acceptance probability</p>
-                    <span className={`text-xs font-bold ${pct > 60 ? "text-emerald-600 dark:text-emerald-400" : pct > 30 ? "text-amber-600 dark:text-amber-400" : "text-red-400"}`}>{pct}%</span>
-                  </div>
-                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full transition-all duration-500 ${pct > 60 ? "bg-emerald-400" : pct > 30 ? "bg-amber-400" : "bg-red-400"}`}
-                      style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {[Math.round(p.price * 0.85), fairPrice, Math.round(p.price * 0.92)].map((preset) => (
-                    <button key={preset} onClick={() => setOffer(preset)}
-                      className={`py-2 rounded-xl text-xs font-semibold border transition-all ${offer === preset ? "bg-[#7B61FF] text-white border-[#7B61FF]" : "border-border text-muted-foreground"}`}>
-                      {fmt(preset)}
-                    </button>
-                  ))}
-                </div>
-                <button onClick={() => setStage("pending")} className="w-full bg-[#7B61FF] text-white py-3 rounded-xl font-bold text-sm">
-                  Submit Offer — {fmt(offer)}
-                </button>
-              </div>
-            )}
-
-            {(stage === "pending" || stage === "counter" || stage === "accepted") && (
-              <div className="flex justify-end">
-                <div className="bg-[#7B61FF] text-white rounded-2xl rounded-br-sm px-4 py-3 max-w-[75%]">
-                  <p className="text-sm font-semibold">My offer: {fmt(offer)}</p>
-                  {stage === "pending" && <p className="text-[10px] text-white/70 mt-0.5">Waiting for response...</p>}
-                </div>
-              </div>
-            )}
-            {stage === "pending" && (
-              <div className="flex gap-2">
-                <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center flex-shrink-0"><Store size={13} className="text-muted-foreground" /></div>
-                <div className="bg-secondary border border-border rounded-2xl rounded-bl-sm px-4 py-3">
-                  <div className="flex gap-1">{[0, 1, 2].map((i) => <div key={i} className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />)}</div>
-                </div>
-              </div>
-            )}
-            {/* Auto-advance pending to counter */}
-            {stage === "pending" && (() => { setTimeout(() => setStage("counter"), 2000); return null; })()}
-            {(stage === "counter" || stage === "accepted") && (
-              <div className="flex gap-2">
-                <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center flex-shrink-0"><Store size={13} className="text-muted-foreground" /></div>
-                <div className="bg-secondary border border-border rounded-2xl rounded-bl-sm px-4 py-3 flex-1">
-                  <p className="text-secondary-foreground text-xs leading-relaxed">
-                    Thanks! My best price is <span className="text-foreground font-bold">{fmt(counterOffer)}</span> — final offer. Shall we make it a deal? 🤝
-                  </p>
-                </div>
-              </div>
-            )}
-            {stage === "counter" && (
-              <div className="flex gap-2">
-                <button onClick={() => setStage("accepted")} className="flex-1 bg-emerald-500 text-foreground py-3 rounded-2xl font-bold text-sm">Accept {fmt(counterOffer)}</button>
-                <button className="flex-1 bg-secondary border border-border text-foreground py-3 rounded-2xl font-semibold text-sm">Counter offer</button>
-              </div>
-            )}
-            {stage === "accepted" && (
-              <div className="bg-emerald-500/10 border border-emerald-500/25 rounded-2xl p-4 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
-                  <Check size={19} className="text-white" strokeWidth={2.5} />
-                </div>
-                <div>
-                  <p className="text-emerald-600 dark:text-emerald-400 font-bold text-sm">Deal Accepted! 🎉</p>
-                  <p className="text-muted-foreground text-[10px]">You saved {fmt(p.price - counterOffer)} off the listed price</p>
-                </div>
-              </div>
-            )}
-          </div>
+          {status === "loading" && <div className="bg-card rounded-2xl p-4 text-xs text-muted-foreground">Checking product availability and negotiation limits…</div>}
+          {status === "error" && <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 text-xs text-red-500">{error}</div>}
+          {(status === "open" || status === "countered") && <div className="bg-card border border-[#7B61FF]/30 rounded-2xl p-4 space-y-3">
+            <div className="flex justify-between items-center"><b className="text-sm text-foreground">Your offer</b><span className="text-[10px] text-muted-foreground">Round {round + 1} / 3</span></div>
+            <label className="block text-xs text-muted-foreground">Offer amount (₹)<input type="number" min={floorPrice} max={originalPrice - 1} value={offer} onChange={e=>setOffer(e.target.value)} className="mt-1 w-full rounded-xl bg-secondary border border-border p-3 text-foreground text-lg font-bold"/></label>
+            {counterOffer !== null && <div className="rounded-xl bg-[#7B61FF]/10 p-3"><p className="text-[10px] text-muted-foreground">Store counter-offer</p><b className="text-lg text-[#7B61FF]">{fmt(counterOffer)}</b><button disabled={busy} onClick={acceptCounter} className="mt-2 w-full rounded-xl bg-[#7B61FF] text-white py-2.5 text-xs font-bold">{busy ? "Submitting…" : "Accept counter-offer"}</button></div>}
+            <button disabled={busy} onClick={sendOffer} className="w-full bg-[#7B61FF] disabled:opacity-50 text-white py-3 rounded-xl text-xs font-bold">{busy ? "Submitting…" : "Submit offer"}</button>
+            <p className="text-[10px] text-muted-foreground">No artificial acceptance percentages. The store's price floor and negotiation rules decide the result.</p>
+          </div>}
+          {status === "accepted" && acceptedPrice !== null && <div className="bg-emerald-500/10 border border-emerald-500/25 rounded-2xl p-4 space-y-3">
+            <div className="flex items-center gap-2"><Check size={18} className="text-emerald-600"/><b className="text-sm text-emerald-600">Offer accepted</b></div>
+            <p className="text-2xl font-bold text-foreground">{fmt(acceptedPrice)}</p>
+            <p className="text-xs text-muted-foreground">You save {fmt(originalPrice-acceptedPrice)} on this item. The accepted price will be carried into your cart.</p>
+            <button onClick={addNegotiatedProduct} className="w-full bg-[#7B61FF] text-white py-3 rounded-xl text-xs font-bold">Add negotiated item to cart</button>
+          </div>}
+          {error && status !== "error" && <p className="text-xs text-red-500">{error}</p>}
         </div>
       </div>
     </div>
@@ -1756,7 +1721,7 @@ function CheckoutScreen({ onBack, onSuccess, userName, items, sessionToken }: { 
     let active = true;
     if (!sessionToken) { setBargainStatus("error"); setError("Please sign in with a verified account to bargain and place an order."); return; }
     if (!items.length) { setBargainStatus("error"); setError("Your cart is empty."); return; }
-    startBargain({ token: sessionToken, items: items.map((p) => ({ productId: p.id, quantity: 1 })) })
+    startBargain({ token: sessionToken, items: items.map((p) => ({ productId: Number(p.id), quantity: 1, sourceBargainId: (p as any).bargainSessionId })) })
       .then((result) => { if (!active) return; setBargainId(result.bargainId); setOriginalTotal(result.originalTotal); setFloorTotal(result.floorTotal); setOffer(String(Math.max(result.floorTotal, Math.floor(result.originalTotal * 0.9)))); setBargainStatus("open"); })
       .catch((e: any) => { if (active) { setBargainStatus("error"); setError(e?.message ?? "Could not start cart bargaining."); } });
     return () => { active = false; };
@@ -2597,7 +2562,7 @@ export default function App() {
       case "wishlist": return <WishlistScreen products={liveProducts.filter((p) => wishlisted.includes(p.id))} onProduct={openProduct} onRemove={toggleWishlist} />;
       case "profile": return <ProfileScreen onNav={navigate} user={auth.user ?? { name: "Guest", email: "", guest: true }} onSignOut={() => { auth.signOut(); setActiveTab("home"); setScreen("home"); setAppState("login"); }} />;
       case "product": return <ProductDetailScreen p={selectedProduct} onBack={goBack} wishlisted={wishlisted.includes(selectedProduct.id)} onWishlist={() => toggleWishlist(selectedProduct.id)} onAddToCart={() => addToCart(selectedProduct)} onBargain={() => navigate("bargain")} onCustomSize={() => navigate("custom-size")} cartCount={cartItems.length} onCart={() => navigate("cart")} />;
-      case "bargain": return <BargainingScreen p={selectedProduct} onBack={goBack} />;
+      case "bargain": return <BargainingScreen p={selectedProduct} onBack={goBack} onAddToCart={(product) => { addToCart(product); navigate("cart"); }} sessionToken={auth.user?.sessionToken} />;
       case "cart": return <CartScreen items={cartItems} onBack={goBack} onCheckout={() => navigate("checkout")} onRemove={(id) => setCartItems((prev) => prev.filter((i) => i.id !== id))} />;
       case "checkout": return <CheckoutScreen onBack={goBack} onSuccess={(order) => { setCartItems([]); setLastOrder({ ...order, items: cartItems.map((p) => ({ productName: p.name, image: p.img })) }); navigate("orders"); }} userName={auth.user?.name ?? "Guest"} items={cartItems} sessionToken={auth.user?.sessionToken} />;
       case "orders": return <OrdersScreen onBack={goBack} order={lastOrder} sessionToken={auth.user?.sessionToken} />;
