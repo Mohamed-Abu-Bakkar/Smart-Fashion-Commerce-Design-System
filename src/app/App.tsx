@@ -1718,12 +1718,12 @@ function OrdersScreen({ onBack, order }: { onBack: () => void; order?: any }) {
             <div className="bg-black/30 rounded-xl px-4 py-2"><span className="text-muted-foreground text-xs">Order ID: </span><span className="text-foreground text-xs font-mono font-bold">{order?.orderCode ?? "Order details unavailable"}</span></div>
           </div>
           <div className="bg-card border border-border rounded-2xl flex overflow-hidden">
-            <img src={PRODUCTS[0].img} alt={PRODUCTS[0].name} className="w-24 h-24 object-cover bg-secondary flex-shrink-0" />
+            <img src={firstItem?.img ?? PRODUCTS[0].img} alt={firstItem?.name ?? PRODUCTS[0].name} className="w-24 h-24 object-cover bg-secondary flex-shrink-0" />
             <div className="p-3 flex-1">
-              <p className="text-[9px] text-[#7B61FF] font-bold tracking-widest uppercase">{PRODUCTS[0].brand}</p>
-              <p className="text-foreground text-sm font-semibold">{PRODUCTS[0].name}</p>
-              <p className="text-muted-foreground text-[10px] mt-0.5">Size M · Bargain price applied</p>
-              <p className="text-foreground font-bold text-sm mt-1">{fmt(order?.total ?? 0)}</p>
+              <p className="text-[9px] text-[#7B61FF] font-bold tracking-widest uppercase">{firstItem?.brand ?? PRODUCTS[0].brand}</p>
+              <p className="text-foreground text-sm font-semibold">{firstItem?.name ?? PRODUCTS[0].name}</p>
+              <p className="text-muted-foreground text-[10px] mt-0.5">{currentOrder?.paymentMode === "cod" ? "Cash on Delivery" : "Mock UPI"} · Negotiated cart price</p>
+              <p className="text-foreground font-bold text-sm mt-1">{fmt(currentOrder?.total ?? 0)}</p>
             </div>
           </div>
           <div className="bg-card border border-border rounded-2xl p-4">
@@ -2457,8 +2457,8 @@ export default function App() {
       case "product": return <ProductDetailScreen p={selectedProduct} onBack={goBack} wishlisted={wishlisted.includes(selectedProduct.id)} onWishlist={() => toggleWishlist(selectedProduct.id)} onAddToCart={() => addToCart(selectedProduct)} onBargain={() => navigate("bargain")} onCustomSize={() => navigate("custom-size")} cartCount={cartItems.length} onCart={() => navigate("cart")} />;
       case "bargain": return <BargainingScreen p={selectedProduct} onBack={goBack} />;
       case "cart": return <CartScreen items={cartItems} onBack={goBack} onCheckout={() => navigate("checkout")} onRemove={(id) => setCartItems((prev) => prev.filter((i) => i.id !== id))} />;
-      case "checkout": return <CheckoutScreen onBack={goBack} onSuccess={(order) => { setCartItems([]); setLastOrder(order); navigate("orders"); }} userName={auth.user?.name ?? "Guest"} items={cartItems} sessionToken={auth.user?.sessionToken} />;
-      case "orders": return <OrdersScreen onBack={goBack} order={lastOrder} />;
+      case "checkout": return <CheckoutScreen onBack={goBack} onSuccess={(order) => { setCartItems([]); setLastOrder({ ...order, items: cartItems }); navigate("orders"); }} userName={auth.user?.name ?? "Guest"} items={cartItems} sessionToken={auth.user?.sessionToken} />;
+      case "orders": return <OrdersScreen onBack={goBack} order={lastOrder} sessionToken={auth.user?.sessionToken} />;
       case "notifications": return <NotificationsScreen onBack={goBack} />;
       case "custom-size": return <CustomSizeScreen onBack={goBack} />;
       case "community": return <CommunityScreen onBack={goBack} />;
