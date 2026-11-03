@@ -1,10 +1,10 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
-export type SessionUser = { name: string; email: string; guest: boolean };
+export type SessionUser = { name: string; email: string; guest: boolean; sessionToken?: string };
 
 export type AuthError = { message: string; code?: string; demoCode?: string };
 
@@ -14,6 +14,7 @@ type AuthBackend = {
   verifyOtp(email: string, code: string): Promise<SessionUser>;
   resendOtp(email: string): Promise<{ email: string; demoCode: string }>;
   login(email: string, passwordHash: string): Promise<SessionUser>;
+  revokeSession(sessionToken: string): Promise<void>;
 };
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
@@ -35,7 +36,13 @@ function makeCode() {
 function loadSession(): SessionUser | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
-    return raw ? (JSON.parse(raw) as SessionUser) : null;
+    if (!raw) return null;
+    const user = JSON.parse(raw) as SessionUser;
+    if (!user.guest && import.meta.env.VITE_CONVEX_URL && !user.sessionToken) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    return user;
   } catch {
     return null;
   }
@@ -100,6 +107,7 @@ const localBackend: AuthBackend = {
     }
     return { name: user.name, email: user.email, guest: false };
   },
+  async revokeSession() {},
 };
 
 // ─── LIVE (CONVEX) BACKEND ───────────────────────────────────────────────────
@@ -109,6 +117,7 @@ function LiveAuthBackend({ children }: { children: ReactNode }) {
   const verify = useMutation(api.auth.verifyOtp);
   const resend = useMutation(api.auth.resendOtp);
   const loginMut = useMutation(api.auth.login);
+  const revokeMut = useMutation(api.auth.revokeCustomerSession);
 
   const backend = useMemo<AuthBackend>(
     () => ({
@@ -136,8 +145,11 @@ function LiveAuthBackend({ children }: { children: ReactNode }) {
           } as AuthError;
         }
       },
+      async revokeSession(sessionToken) {
+        await revokeMut({ sessionToken });
+      },
     }),
-    [requestSignup, verify, resend, loginMut],
+    [requestSignup, verify, resend, loginMut, revokeMut],
   );
 
   return <AuthBackendContext.Provider value={backend}>{children}</AuthBackendContext.Provider>;
@@ -150,6 +162,9 @@ const AuthBackendContext = createContext<AuthBackend>(localBackend);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const url = import.meta.env.VITE_CONVEX_URL as string | undefined;
   const [user, setUser] = useState<SessionUser | null>(loadSession);
+  useEffect(() => {
+    if (url && user && !user.guest && !user.sessionToken) setUser(null);
+  }, [url, user]);
 
   const session = useMemo(
     () => ({
@@ -214,8 +229,13 @@ export function useAuth() {
         setUser(u);
         return u;
       },
-      signOut() {
-        setUser(null);
+      async signOut() {
+        const token = user?.sessionToken;
+        try {
+          if (token) await backend.revokeSession(token);
+        } finally {
+          setUser(null);
+        }
       },
     }),
     [backend, user, setUser],
