@@ -2460,7 +2460,7 @@ export default function App() {
       case "product": return <ProductDetailScreen p={selectedProduct} onBack={goBack} wishlisted={wishlisted.includes(selectedProduct.id)} onWishlist={() => toggleWishlist(selectedProduct.id)} onAddToCart={() => addToCart(selectedProduct)} onBargain={() => navigate("bargain")} onCustomSize={() => navigate("custom-size")} cartCount={cartItems.length} onCart={() => navigate("cart")} />;
       case "bargain": return <BargainingScreen p={selectedProduct} onBack={goBack} />;
       case "cart": return <CartScreen items={cartItems} onBack={goBack} onCheckout={() => navigate("checkout")} onRemove={(id) => setCartItems((prev) => prev.filter((i) => i.id !== id))} />;
-      case "checkout": return <CheckoutScreen onBack={goBack} onSuccess={(order) => { setCartItems([]); setLastOrder({ ...order, items: cartItems }); navigate("orders"); }} userName={auth.user?.name ?? "Guest"} items={cartItems} sessionToken={auth.user?.sessionToken} />;
+      case "checkout": return <CheckoutScreen onBack={goBack} onSuccess={(order) => { setCartItems([]); setLastOrder({ ...order, items: cartItems.map((p) => ({ productName: p.name, image: p.img })) }); navigate("orders"); }} userName={auth.user?.name ?? "Guest"} items={cartItems} sessionToken={auth.user?.sessionToken} />;
       case "orders": return <OrdersScreen onBack={goBack} order={lastOrder} sessionToken={auth.user?.sessionToken} />;
       case "notifications": return <NotificationsScreen onBack={goBack} />;
       case "custom-size": return <CustomSizeScreen onBack={goBack} />;
