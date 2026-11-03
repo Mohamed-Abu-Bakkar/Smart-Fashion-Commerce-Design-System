@@ -1013,7 +1013,7 @@ function AIScreen() {
 // ─── WISHLIST ─────────────────────────────────────────────────────────────────
 
 function WishlistScreen({ products, onProduct, onRemove }: {
-  products: Product[]; onProduct: (p: Product) => void; onRemove: (id: number) => void;
+  products: Product[]; onProduct: (p: Product) => void; onRemove: (id: number) => void; onManageAlerts: () => void;
 }) {
   if (products.length === 0) {
     return (
@@ -1036,10 +1036,10 @@ function WishlistScreen({ products, onProduct, onRemove }: {
         <div className="bg-gradient-to-r from-[#7B61FF]/12 to-transparent border border-[#7B61FF]/20 rounded-2xl px-4 py-3 flex items-center gap-3">
           <Sparkles size={17} className="text-[#7B61FF] flex-shrink-0" />
           <div className="flex-1">
-            <p className="text-foreground text-xs font-semibold">AI Price Prediction</p>
-            <p className="text-muted-foreground text-[10px]">Shadow Bomber likely drops 10% this weekend</p>
+            <p className="text-foreground text-xs font-semibold">Wishlist Intelligence</p>
+            <p className="text-muted-foreground text-[10px]">Track price drops, sale changes and availability from recorded catalog updates.</p>
           </div>
-          <button className="text-[#7B61FF] text-xs font-bold whitespace-nowrap">Alert me</button>
+          <button onClick={onManageAlerts} className="text-[#7B61FF] text-xs font-bold whitespace-nowrap">Manage</button>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto scrollbar-hide">
@@ -1199,7 +1199,7 @@ function ProfileScreen({ onNav, user, onSignOut }: {
 
 function ProductDetailScreen({ p, onBack, wishlisted, onWishlist, onAddToCart, onBargain, onCustomSize, cartCount, onCart }: {
   p: Product; onBack: () => void; wishlisted: boolean; onWishlist: () => void;
-  onAddToCart: () => void; onBargain: () => void; onCustomSize: () => void;
+  onAddToCart: (quantity: number, size: string, color: string) => void; onBargain: () => void; onCustomSize: () => void;
   cartCount: number; onCart: () => void;
 }) {
   const PRODUCTS = useShopData().products; // live (Convex) with mock fallback
@@ -1210,17 +1210,10 @@ function ProductDetailScreen({ p, onBack, wishlisted, onWishlist, onAddToCart, o
   const [activeTab, setActiveTab] = useState<"details" | "reviews">("details");
   const fairPrice = Math.round(p.price * 0.88);
 
-  const PRICE_HIST = [
-    { month: "Aug", price: p.original },
-    { month: "Sep", price: Math.round(p.original * 0.95) },
-    { month: "Oct", price: Math.round(p.original * 0.92) },
-    { month: "Nov", price: Math.round(p.original * 0.88) },
-    { month: "Dec", price: Math.round(p.original * 0.72) },
-    { month: "Jan", price: p.price },
-  ];
+  const PRICE_HIST = p.priceHistory ?? [];
 
   const handleAdd = () => {
-    onAddToCart(); setAdded(true);
+    onAddToCart(qty, p.sizes[selSize] ?? p.sizes[0] ?? "M", p.colors[selColor] ?? p.colors[0] ?? "Default"); setAdded(true);
     setTimeout(() => setAdded(false), 2200);
   };
 
@@ -1265,7 +1258,7 @@ function ProductDetailScreen({ p, onBack, wishlisted, onWishlist, onAddToCart, o
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5"><StarRating rating={p.rating} size={12} /><span className="text-foreground font-semibold text-sm">{p.rating}</span></div>
               <span className="text-muted-foreground/70 text-xs">({p.reviews} reviews)</span>
-              <span className="text-emerald-600 dark:text-emerald-400 text-xs font-semibold">In Stock</span>
+              <span className={typeof p.stock === "number" && p.stock <= 0 ? "text-red-500 text-xs font-semibold" : "text-emerald-600 dark:text-emerald-400 text-xs font-semibold"}>{typeof p.stock === "number" ? (p.stock > 0 ? p.stock + " in stock" : "Out of stock") : "Availability varies"}</span>
             </div>
           </div>
 
@@ -1335,24 +1328,32 @@ function ProductDetailScreen({ p, onBack, wishlisted, onWishlist, onAddToCart, o
                 </div>
               </div>
 
-              {/* Price History */}
+              {/* Price history is shown only when the catalog contains actual snapshots. */}
               <div className="bg-card border border-border rounded-2xl p-4">
-                <p className="text-foreground font-semibold text-sm mb-3">Price History</p>
-                <ResponsiveContainer width="100%" height={100}>
-                  <AreaChart data={PRICE_HIST}>
-                    <defs>
-                      <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#7B61FF" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#7B61FF" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="month" tick={{ fill: "var(--muted-foreground)", fontSize: 9 }} axisLine={false} tickLine={false} />
-                    <YAxis hide domain={["auto", "auto"]} />
-                    <Tooltip contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", color: "var(--popover-foreground)", borderRadius: "12px", fontSize: "11px" }}
-                      labelStyle={{ color: "#888" }} itemStyle={{ color: "#7B61FF" }} />
-                    <Area type="monotone" dataKey="price" stroke="#7B61FF" strokeWidth={2} fill="url(#priceGrad)" />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <p className="text-foreground font-semibold text-sm mb-3">Recorded Price History</p>
+                {PRICE_HIST.length > 1 ? <>
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    <div><p className="text-muted-foreground text-[9px]">Lowest</p><b className="text-foreground text-xs">{fmt(Math.min(...PRICE_HIST.map((point) => point.price)))}</b></div>
+                    <div><p className="text-muted-foreground text-[9px]">Average</p><b className="text-foreground text-xs">{fmt(Math.round(PRICE_HIST.reduce((sum, point) => sum + point.price, 0) / PRICE_HIST.length))}</b></div>
+                    <div><p className="text-muted-foreground text-[9px]">Highest</p><b className="text-foreground text-xs">{fmt(Math.max(...PRICE_HIST.map((point) => point.price)))}</b></div>
+                  </div>
+                  <ResponsiveContainer width="100%" height={100}>
+                    <AreaChart data={PRICE_HIST}>
+                      <defs>
+                        <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#7B61FF" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#7B61FF" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="month" tick={{ fill: "var(--muted-foreground)", fontSize: 9 }} axisLine={false} tickLine={false} />
+                      <YAxis hide domain={["auto", "auto"]} />
+                      <Tooltip contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", color: "var(--popover-foreground)", borderRadius: "12px", fontSize: "11px" }}
+                        labelStyle={{ color: "#888" }} itemStyle={{ color: "#7B61FF" }} />
+                      <Area type="monotone" dataKey="price" stroke="#7B61FF" strokeWidth={2} fill="url(#priceGrad)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                  <p className="text-muted-foreground text-[9px] mt-2">Historical snapshots only. No future price prediction is available.</p>
+                </> : <p className="text-muted-foreground text-xs">Price history is not available yet for this product. No sample trend is shown.</p>}
               </div>
 
               <div className="grid grid-cols-3 gap-2">
@@ -2520,9 +2521,9 @@ export default function App() {
       case "home": return <HomeScreen onProduct={openProduct} wishlisted={wishlisted} onWishlist={toggleWishlist} cartCount={commerce.cartCount} onCart={() => navigate("cart")} onNav={navigate} userName={auth.user?.name ?? "Guest"} />;
       case "discover": return <DiscoverScreen onProduct={openProduct} wishlisted={wishlisted} onWishlist={toggleWishlist} />;
       case "ai": return <AIScreen />;
-      case "wishlist": return <WishlistScreen products={liveProducts.filter((p) => wishlisted.includes(p.id))} onProduct={openProduct} onRemove={toggleWishlist} />;
+      case "wishlist": return <WishlistScreen products={liveProducts.filter((p) => wishlisted.includes(p.id))} onProduct={openProduct} onRemove={toggleWishlist} onManageAlerts={() => navigate("commerce-hub")} />;
       case "profile": return <ProfileScreen onNav={navigate} user={auth.user ?? { name: "Guest", email: "", guest: true }} onSignOut={() => { void auth.signOut(); setActiveTab("home"); setScreen("home"); setAppState("login"); }} />;
-      case "product": return <ProductDetailScreen p={selectedProduct} onBack={goBack} wishlisted={wishlisted.includes(selectedProduct.id)} onWishlist={() => toggleWishlist(selectedProduct.id)} onAddToCart={() => addToCart(selectedProduct)} onBargain={() => navigate("bargain")} onCustomSize={() => navigate("custom-size")} cartCount={commerce.cartCount} onCart={() => navigate("cart")} />;
+      case "product": return <ProductDetailScreen p={selectedProduct} onBack={goBack} wishlisted={wishlisted.includes(selectedProduct.id)} onWishlist={() => toggleWishlist(selectedProduct.id)} onAddToCart={(quantity, size, color) => void commerce.addToCart(selectedProduct, quantity, size, color)} onBargain={() => navigate("bargain")} onCustomSize={() => navigate("custom-size")} cartCount={commerce.cartCount} onCart={() => navigate("cart")} />;
       case "commerce-hub":
       case "bargain":
       case "cart":
