@@ -31,7 +31,7 @@ import {
   type ProductReview,
 } from "./data";
 import { useAuth, authErrorMessage, initialsOf, type SessionUser } from "./auth";
-import { useQuery, useAction } from "convex/react";
+import { useQuery, useAction, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 type AppState = "splash" | "onboarding" | "login" | "otp" | "main";
 type MainTab = "home" | "discover" | "ai" | "wishlist" | "profile";
