@@ -32,7 +32,7 @@ jobs:
 
       - name: Type-check AI backend and Vercel function
         run: >-
-          pnpm dlx --package=typescript@7.0.2 tsc
+          pnpm dlx --package typescript@7.0.2 tsc
           --noEmit
           --skipLibCheck
           --target ES2022
