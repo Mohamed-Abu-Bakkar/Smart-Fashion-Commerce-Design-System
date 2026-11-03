@@ -9,6 +9,7 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as commerce from "../commerce.js";
 import type * as adminAuth from "../adminAuth.js";
 import type * as aiStylist from "../aiStylist.js";
 import type * as seed from "../seed.js";
@@ -22,6 +23,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  commerce: typeof commerce;
   adminAuth: typeof adminAuth;
   aiStylist: typeof aiStylist;
   seed: typeof seed;
