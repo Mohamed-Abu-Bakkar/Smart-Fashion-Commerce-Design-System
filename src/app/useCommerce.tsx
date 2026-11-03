@@ -118,12 +118,10 @@ export function useCommerce() {
     quantity = 1,
     size = product.sizes[0] ?? "M",
     color = product.colors[0] ?? "Default",
-    negotiatedPrice?: number,
   ) => {
     if (sessionToken) {
       await addCloud({
         sessionToken, productId: product.id, quantity, size, color,
-        ...(negotiatedPrice === undefined ? {} : { negotiatedPrice }),
       });
       return;
     }
@@ -132,12 +130,12 @@ export function useCommerce() {
       const match = previous.find((line) => line.key === key);
       if (match) {
         return previous.map((line) => line.key === key
-          ? { ...line, quantity: Math.min(20, line.quantity + quantity), unitPrice: negotiatedPrice ?? product.price }
+          ? { ...line, quantity: Math.min(20, line.quantity + quantity), unitPrice: product.price }
           : line);
       }
       return [...previous, {
         key, productId: product.id, product, quantity, size, color,
-        unitPrice: negotiatedPrice ?? product.price,
+        unitPrice: product.price,
       }];
     });
   }, [sessionToken, addCloud]);
