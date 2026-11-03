@@ -20,7 +20,7 @@ async function requireCustomer(ctx: any, token: string) {
 }
 
 export const startBargain = mutation({
-  args: { token: v.string(), items: v.array(v.object({ productId: v.number(), quantity: v.number() })) },
+  args: { token: v.string(), items: v.array(v.object({ productId: v.number(), quantity: v.number(), sourceBargainId: v.optional(v.id("bargainSessions")) })) },
   handler: async (ctx, args) => {
     const { user } = await requireCustomer(ctx, args.token);
     if (!args.items.length || args.items.length > 30) throw new ConvexError("Your cart is empty or too large.");
@@ -32,14 +32,42 @@ export const startBargain = mutation({
       const product = await ctx.db.query("products").withIndex("by_product_id", (q) => q.eq("id", item.productId)).unique();
       if (!product) throw new ConvexError("A product in your cart is no longer available.");
       if (typeof product.stock === "number" && product.stock < item.quantity) throw new ConvexError(`${product.name} does not have enough stock.`);
-      const floor = product.minSellingPrice ?? product.price;
-      if (floor <= 0 || floor > product.price) throw new ConvexError(`The minimum price for ${product.name} needs admin review.`);
-      originalTotal += product.price * item.quantity;
-      prepared.push({ productId: product.id, productName: product.name, quantity: item.quantity, listUnitPrice: product.price, floorUnitPrice: floor, agreedUnitPrice: product.price });
+      let listUnitPrice = product.price;
+      let floor = product.minSellingPrice ?? product.price;
+      if (item.sourceBargainId) {
+        const source = await ctx.db.get(item.sourceBargainId);
+        if (!source || source.userId !== user._id || source.scope !== "product" || source.status !== "accepted" || source.expiresAt <= now) throw new ConvexError(`The accepted offer for ${product.name} is no longer valid. Bargain again.`);
+        const sourceLines = await ctx.db.query("bargainItems").withIndex("by_bargain", (q) => q.eq("bargainId", source._id)).collect();
+        const sourceLine = sourceLines.find((line) => line.productId === product.id);
+        if (!sourceLine || sourceLines.length !== 1) throw new ConvexError("Product bargain does not match this cart item.");
+        listUnitPrice = sourceLine.agreedUnitPrice;
+        floor = sourceLine.floorUnitPrice;
+        await ctx.db.patch(source._id, { status: "converted", updatedAt: now });
+      }
+      if (floor <= 0 || floor > listUnitPrice) throw new ConvexError(`The minimum price for ${product.name} needs admin review.`);
+      originalTotal += listUnitPrice * item.quantity;
+      prepared.push({ productId: product.id, productName: product.name, quantity: item.quantity, listUnitPrice, floorUnitPrice: floor, agreedUnitPrice: listUnitPrice });
     }
-    const bargainId = await ctx.db.insert("bargainSessions", { userId: user._id, status: "open", round: 0, expiresAt: now + 10 * 60 * 1000, originalTotal, currentOffer: originalTotal, createdAt: now, updatedAt: now });
+    const bargainId = await ctx.db.insert("bargainSessions", { userId: user._id, scope: "cart", status: "open", round: 0, expiresAt: now + 10 * 60 * 1000, originalTotal, currentOffer: originalTotal, createdAt: now, updatedAt: now });
     for (const item of prepared) await ctx.db.insert("bargainItems", { bargainId, ...item });
     return { bargainId, originalTotal, expiresAt: now + 10 * 60 * 1000, floorTotal: prepared.reduce((sum, i) => sum + i.floorUnitPrice * i.quantity, 0) };
+  },
+});
+
+export const startProductBargain = mutation({
+  args: { token: v.string(), productId: v.number() },
+  handler: async (ctx, args) => {
+    const { user } = await requireCustomer(ctx, args.token);
+    const product = await ctx.db.query("products").withIndex("by_product_id", (q) => q.eq("id", args.productId)).unique();
+    if (!product) throw new ConvexError("This product is no longer available.");
+    if (typeof product.stock === "number" && product.stock < 1) throw new ConvexError("This product is currently out of stock.");
+    const floor = product.minSellingPrice ?? product.price;
+    if (floor <= 0 || floor > product.price) throw new ConvexError("This product's minimum selling price needs admin review.");
+    const now = Date.now();
+    const expiresAt = now + 10 * 60 * 1000;
+    const bargainId = await ctx.db.insert("bargainSessions", { userId: user._id, scope: "product", status: "open", round: 0, expiresAt, originalTotal: product.price, currentOffer: product.price, createdAt: now, updatedAt: now });
+    await ctx.db.insert("bargainItems", { bargainId, productId: product.id, productName: product.name, quantity: 1, listUnitPrice: product.price, floorUnitPrice: floor, agreedUnitPrice: product.price });
+    return { bargainId, productId: product.id, productName: product.name, originalPrice: product.price, floorPrice: floor, expiresAt };
   },
 });
 
