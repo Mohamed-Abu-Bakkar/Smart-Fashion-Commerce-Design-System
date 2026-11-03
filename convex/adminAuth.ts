@@ -69,13 +69,15 @@ export const bootstrap = query({
   args: { token: v.string() },
   handler: async (ctx, args) => {
     await requireAdmin(ctx, args.token);
-    const [products, revenue, requests, votes] = await Promise.all([
+    const [products, revenue, requests, votes, orders, bargains] = await Promise.all([
       ctx.db.query("products").order("asc").collect(),
       ctx.db.query("revenueDaily").withIndex("by_sort").collect(),
       ctx.db.query("collectionRequests").collect(),
       ctx.db.query("votingCards").collect(),
+      ctx.db.query("orders").order("desc").take(200),
+      ctx.db.query("bargainSessions").order("desc").take(200),
     ]);
-    return { products, revenue, requests, votes };
+    return { products, revenue, requests, votes, orders, bargains };
   },
 });
 
