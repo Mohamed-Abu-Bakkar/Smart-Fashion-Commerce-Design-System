@@ -20,7 +20,7 @@ import "./auth.css";
 
 type Section = "Overview" | "Products" | "Orders" | "Inventory" | "Bargaining" | "Pre-orders" | "Collection requests" | "Community votes" | "Customers" | "Analytics" | "Campaigns" | "Settings";
 type Tone = "green" | "amber" | "red" | "blue" | "neutral";
-type Product = { id:string; name:string; category:string; price:number; stock:number|null; status:"Active"|"Low stock"|"Draft"; image:string; sku:string };
+type Product = { id:string; name:string; category:string; price:number; stock:number|null; minSellingPrice?:number|null; status:"Active"|"Low stock"|"Draft"; image:string; sku:string };
 type Order = { id:string; customer:string; date:string; items:number; total:number; status:"Processing"|"Shipped"|"Delivered"|"Pending"|"Cancelled" };
 type Deal = { id:string; item:string; customer:string; ask:number; offer:number; suggested:number; expires:string };
 
@@ -107,7 +107,7 @@ export default function App(){
   const [loginPassword,setLoginPassword]=useState("");
   const [loginError,setLoginError]=useState("");
   const [loginBusy,setLoginBusy]=useState(false);
-  const [stockDrafts,setStockDrafts]=useState<Record<string,string>>({});
+  const [stockDrafts,setStockDrafts]=useState<Record<string,string>>({});\n  const [floorDrafts,setFloorDrafts]=useState<Record<string,string>>({});
   const [revenueSeries,setRevenueSeries]=useState(revenueData);
   const [liveRequests,setLiveRequests]=useState(requests);
   const [liveVotes,setLiveVotes]=useState([{title:"Obsidian Series",designer:"Studio Noir",votes:3241,comments:87,progress:78,img:"https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=300&h=180&fit=crop"},{title:"Glass & Shadow",designer:"Form Studio",votes:2109,comments:54,progress:51,img:"https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=300&h=180&fit=crop"},{title:"Velocity Pack",designer:"Motion Lab",votes:1834,comments:43,progress:34,img:"https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=300&h=180&fit=crop"}]);
@@ -122,8 +122,8 @@ export default function App(){
     ]).then(([session,data])=>{
       if(!active) return;
       setAdminUser({name:session.name,email:session.email,role:session.role});
-      if(data.products.length) setProducts(data.products.map((row:any)=>({id:"SF-"+row.id,name:row.name,category:row.category,price:row.price,stock:row.stock??null,status:(row.status==="Draft"?"Draft":row.stock!==undefined&&row.stock<10?"Low stock":"Active") as Product["status"],image:row.img,sku:row.sku??"SF-"+String(row.id).padStart(4,"0")})));
-      if(data.revenue.length) setRevenueSeries(data.revenue.map((row:any)=>({day:row.day,revenue:Math.round(row.rev/1000),orders:row.orders})));
+      if(data.products.length) setProducts(data.products.map((row:any)=>({id:"SF-"+row.id,name:row.name,category:row.category,price:row.price,stock:row.stock??null,minSellingPrice:row.minSellingPrice??null,status:(row.status==="Draft"?"Draft":row.stock!==undefined&&row.stock<10?"Low stock":"Active") as Product["status"],image:row.img,sku:row.sku??"SF-"+String(row.id).padStart(4,"0")})));
+      if(data.orders?.length) setOrders(data.orders.map((row:any)=>({id:row._id,customer:row.customerName,date:new Date(row.createdAt).toLocaleString(),items:row.items?.reduce((n:number,x:any)=>n+x.quantity,0)??0,total:row.total,status:row.orderStatus,paymentMode:row.paymentMode,paymentStatus:row.paymentStatus})));\n      if(data.revenue.length) setRevenueSeries(data.revenue.map((row:any)=>({day:row.day,revenue:Math.round(row.rev/1000),orders:row.orders})));
       if(data.requests.length) setLiveRequests(data.requests.map((row:any)=>({id:"CR-"+String(row.id).padStart(3,"0"),title:row.title,category:row.category,votes:row.votes,interested:row.interested,progress:Math.min(100,Math.round(row.votes/1500*100)),status:row.status,image:row.img})));
       if(data.votes.length) setLiveVotes(data.votes.map((row:any)=>({title:row.title,designer:row.designer,votes:row.likes,comments:row.comments,progress:row.progress,img:row.img})));
       setBackendStatus("connected");
@@ -140,60 +140,7 @@ export default function App(){
   const filteredProducts=useMemo(()=>products.filter(p=>(p.name+" "+p.id+" "+p.category).toLowerCase().includes(query.toLowerCase())&&(filter==="All"||p.status===filter)),[products,query,filter]);
   const filteredOrders=useMemo(()=>orders.filter(o=>(o.id+" "+o.customer).toLowerCase().includes(query.toLowerCase())&&(filter==="All"||o.status===filter)),[orders,query,filter]);
   const flash=(message:string)=>{setNotice(message);window.setTimeout(()=>setNotice(""),2600)};
-  const changeOrder=(id:string,status:Order["status"])=>{setOrders(old=>old.map(o=>o.id===id?{...o,status}:o));flash(id+" marked "+status.toLowerCase());};
-  const createProduct=async()=>{
-    if(!productName.trim()||!productPrice||Number(productPrice)<=0||productDescription.trim().length<20||!productMinPrice||Number(productMinPrice)<=0||Number(productMinPrice)>Number(productPrice)){flash("Enter a description (20+ characters), valid price and minimum selling price not above list price");return;}
-    const url=import.meta.env.VITE_CONVEX_URL;
-    if(!url||!authToken){flash("Admin connection is unavailable");return;}
-    try{
-      const client=new ConvexHttpClient(url);
-      const created=await client.mutation(api.adminAuth.createProduct,{token:authToken,name:productName.trim(),category:productCategory,price:Number(productPrice),stock:0,desc:productDescription.trim(),minSellingPrice:Number(productMinPrice),img:"https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=120&h=120&fit=crop"});
-      setProducts(old=>[{id:"SF-"+created.id,name:productName.trim(),category:productCategory,price:Number(productPrice),stock:0,status:"Draft",image:"https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=120&h=120&fit=crop",sku:created.sku},...old]);
-      setModal(false);setProductName("");setProductPrice("");setProductDescription("");setProductMinPrice("");flash("Product draft saved to Convex");
-    }catch(e:any){flash(e?.message??"Could not save product");}
-  };
-  const saveStock=async(product:Product)=>{
-    const stock=Number(stockDrafts[product.id]??product.stock??0);
-    if(!Number.isInteger(stock)||stock<0){flash("Stock must be a non-negative whole number");return;}
-    const url=import.meta.env.VITE_CONVEX_URL;
-    if(!url||!authToken)return;
-    try{
-      await new ConvexHttpClient(url).mutation(api.adminAuth.updateProductStock,{token:authToken,productId:Number(product.id.replace("SF-","")),stock});
-      setProducts(old=>old.map(p=>p.id===product.id?{...p,stock,status:stock===0?"Draft":stock<10?"Low stock":"Active"}:p));
-      flash("Inventory quantity saved");
-    }catch(e:any){flash(e?.message??"Could not update stock");}
-  };
-  const reviewCollectionRequest=async(requestId:string)=>{
-    const url=import.meta.env.VITE_CONVEX_URL;
-    if(!url||!authToken)return;
-    try{
-      await new ConvexHttpClient(url).mutation(api.adminAuth.updateCollectionRequest,{token:authToken,requestId:Number(requestId.replace("CR-","")),status:"In Review"});
-      setRequestState(s=>({...s,[requestId]:"In Review"}));
-      setLiveRequests(old=>old.map(r=>r.id===requestId?{...r,status:"In Review"}:r));
-      flash("Collection request updated");
-    }catch(e:any){flash(e?.message??"Could not update request");}
-  };
-  const signInAdmin=async(e:FormEvent)=>{
-    e.preventDefault();setLoginError("");
-    if(!loginEmail.trim()||!loginPassword){setLoginError("Enter your admin email and password.");return;}
-    const url=import.meta.env.VITE_CONVEX_URL;
-    if(!url){setLoginError("Admin backend is not configured. Set VITE_CONVEX_URL in the admin deployment.");return;}
-    setLoginBusy(true);
-    try{
-      const client=new ConvexHttpClient(url);
-      const passwordHash=await hashAdminPassword(loginEmail,loginPassword);
-      const result=await client.mutation(api.adminAuth.login,{email:loginEmail.trim().toLowerCase(),passwordHash});
-      sessionStorage.setItem(ADMIN_SESSION_KEY,result.token);
-      setAuthToken(result.token);setAdminUser(result.user);setLoginPassword("");
-    }catch(err:any){setLoginError(err?.message??"Unable to sign in. Check your credentials.");}
-    finally{setLoginBusy(false);}
-  };
-  const signOutAdmin=async()=>{
-    const url=import.meta.env.VITE_CONVEX_URL;
-    try{if(url&&authToken)await new ConvexHttpClient(url).mutation(api.adminAuth.logout,{token:authToken});}catch{}
-    sessionStorage.removeItem(ADMIN_SESSION_KEY);setAuthToken("");setAdminUser(null);setLoginPassword("");setSection("Overview");
-  };
-  const exportCsv=()=>{const rows=[["Order","Customer","Date","Items","Total","Status"],...orders.map(o=>[o.id,o.customer,o.date,String(o.items),String(o.total),o.status])];const csv=rows.map(r=>r.map(v=>'"'+v.replace(/"/g,'""')+'"').join(",")).join("\n");const url=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));const a=document.createElement("a");a.href=url;a.download="sf-commerce-orders-demo.csv";a.click();URL.revokeObjectURL(url);flash("Demo order CSV exported");};
+  const changeOrder=async(id:string,status:Order["status"])=>{const url=import.meta.env.VITE_CONVEX_URL;if(!url||!authToken){flash("Admin connection unavailable");return;}try{await new ConvexHttpClient(url).mutation(api.adminAuth.updateOrderStatus,{token:authToken,orderId:id as any,status});setOrders(old=>old.map(o=>o.id===id?{...o,status}:o));flash(id+" marked "+status);}catch(e:any){flash(e?.message??"Could not update order status");}};\n");const url=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));const a=document.createElement("a");a.href=url;a.download="sf-commerce-orders-demo.csv";a.click();URL.revokeObjectURL(url);flash("Demo order CSV exported");};
   const renderDashboard=()=> <div className="page-body">
     <div className="welcome-row"><div><div className="eyebrow">TUESDAY, NOVEMBER 3, 2026</div><h2>Your store at a glance<span className="wave"> ✳</span></h2><p>Here’s what’s happening with your fashion business today.</p></div><button className="btn btn-secondary" onClick={()=>flash("Dashboard refreshed with demo data")}><RefreshCw size={15}/> Refresh</button></div>
     <div className="demo-banner"><span className="demo-pulse"/><strong>{backendStatus==="connected"?"Convex connected · admin workspace":backendStatus==="error"?"Convex connection error":"Preview workspace"}</strong><span>{backendStatus==="connected"?"Products, revenue history, collection requests and community votes are loaded from Convex. Product creation, stock updates and collection review use protected admin mutations once the backend deployment is updated. Orders, bargaining, pre-orders, customers and KPI totals remain sample data.":backendStatus==="error"?"Could not reach the configured Convex deployment. Remaining figures are preview data.":"Figures and records shown here are sample data. Add VITE_CONVEX_URL to load the existing public Convex insights."}</span><button onClick={()=>setSection("Settings")}>Integration settings <ArrowRight size={13}/></button></div>
@@ -214,7 +161,7 @@ export default function App(){
   const renderProducts=()=> <div className="page-body">
     <div className="section-intro"><div><div className="eyebrow">CATALOG MANAGEMENT</div><h2>Products</h2><p>Manage the pieces customers discover and love.</p></div><button className="btn btn-primary" onClick={()=>setModal(true)}><Plus size={16}/> Add product</button></div>
     <div className="mini-stats"><span><b>{products.length}</b> Total products</span><span><b>{products.filter(p=>p.status==="Active").length}</b> Active</span><span><b>{products.filter(p=>p.status==="Low stock").length}</b> Low stock</span><span><b>{products.filter(p=>p.status==="Draft").length}</b> Drafts</span></div>
-    <div className="panel table-panel"><div className="table-toolbar"><div className="search-field"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search products or SKU..."/></div><select value={filter} onChange={e=>setFilter(e.target.value)}><option>All</option><option>Active</option><option>Low stock</option><option>Draft</option></select><button className="btn btn-secondary" onClick={()=>flash("Product filters are up to date")}><SlidersHorizontal size={15}/> Filters</button></div><div className="table-scroll"><table><thead><tr><th>PRODUCT</th><th>SKU</th><th>CATEGORY</th><th>PRICE</th><th>STOCK</th><th>STATUS</th><th/></tr></thead><tbody>{filteredProducts.map(p=><tr key={p.id}><td><div className="product-cell"><img src={p.image} alt=""/><div><b>{p.name}</b><span>{p.id}</span></div></div></td><td className="muted">{p.sku}</td><td>{p.category}</td><td><b>{money(p.price)}</b></td><td><span className={p.stock!==null&&p.stock<10?"stock-low":""}>{p.stock===null?"Not tracked":p.stock+" units"}</span></td><td><Status tone={p.status==="Active"?"green":p.status==="Low stock"?"amber":"neutral"}>{p.status}</Status></td><td><button className="icon-btn" onClick={()=>flash("Product detail editor is awaiting backend integration")}><MoreHorizontal size={17}/></button></td></tr>)}</tbody></table>{filteredProducts.length===0&&<EmptyState title="No matching products" detail="Try another search or clear the status filter."/ >}</div></div>
+    <div className="panel table-panel"><div className="table-toolbar"><div className="search-field"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search products or SKU..."/></div><select value={filter} onChange={e=>setFilter(e.target.value)}><option>All</option><option>Active</option><option>Low stock</option><option>Draft</option></select><button className="btn btn-secondary" onClick={()=>flash("Product filters are up to date")}><SlidersHorizontal size={15}/> Filters</button></div><div className="table-scroll"><table><thead><tr><th>PRODUCT</th><th>SKU</th><th>CATEGORY</th><th>PRICE</th><th>MIN. SELLING PRICE</th><th>STOCK</th><th>STATUS</th><th/></tr></thead><tbody>{filteredProducts.map(p=><tr key={p.id}><td><div className="product-cell"><img src={p.image} alt=""/><div><b>{p.name}</b><span>{p.id}</span></div></div></td><td className="muted">{p.sku}</td><td>{p.category}</td><td><b>{money(p.price)}</b></td><td><div className="inline-edit"><input type="number" min="1" max={p.price} value={floorDrafts[p.id]??p.minSellingPrice??""} placeholder="Set floor" onChange={e=>setFloorDrafts(s=>({...s,[p.id]:e.target.value}))}/><button className="btn btn-secondary" onClick={()=>saveMinimumPrice(p)}>Save</button></div></td><td><span className={p.stock!==null&&p.stock<10?"stock-low":""}>{p.stock===null?"Not tracked":p.stock+" units"}</span></td><td><Status tone={p.status==="Active"?"green":p.status==="Low stock"?"amber":"neutral"}>{p.status}</Status></td><td><button className="icon-btn" onClick={()=>flash("Product detail editor is awaiting backend integration")}><MoreHorizontal size={17}/></button></td></tr>)}</tbody></table>{filteredProducts.length===0&&<EmptyState title="No matching products" detail="Try another search or clear the status filter."/ >}</div></div>
   </div>;
 
   const renderOrders=()=> <div className="page-body"><div className="section-intro"><div><div className="eyebrow">FULFILMENT</div><h2>Orders</h2><p>Keep every order moving from checkout to doorstep.</p></div><button className="btn btn-secondary" onClick={exportCsv}><Download size={15}/> Export CSV</button></div><div className="mini-stats"><span><b>{orders.length}</b> Showing orders</span><span><b>{orders.filter(o=>o.status==="Processing").length}</b> Processing</span><span><b>{orders.filter(o=>o.status==="Pending").length}</b> Pending</span><span><b>{orders.filter(o=>o.status==="Shipped").length}</b> Shipped</span></div><div className="panel table-panel"><div className="table-toolbar"><div className="search-field"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search order or customer..."/></div><select value={filter} onChange={e=>setFilter(e.target.value)}><option>All</option>{["Processing","Pending","Shipped","Delivered","Cancelled"].map(v=><option key={v}>{v}</option>)}</select><button className="btn btn-secondary" onClick={()=>{setQuery("");setFilter("All")}}><X size={14}/> Clear</button></div><OrderTable rows={filteredOrders} onChange={changeOrder}/></div></div>;
@@ -272,4 +219,4 @@ export default function App(){
 function OrderTable({rows,onChange}:{rows:Order[];onChange:(id:string,status:Order["status"])=>void}){
   return <div className="table-scroll"><table><thead><tr><th>ORDER</th><th>CUSTOMER</th><th>DATE</th><th>ITEMS</th><th>TOTAL</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>{rows.map(o=><tr key={o.id}><td><b>{o.id}</b></td><td><div className="customer-cell"><Avatar name={o.customer} size="sm"/>{o.customer}</div></td><td className="muted">{o.date}</td><td>{o.items}</td><td><b>{money(o.total)}</b></td><td><Status tone={o.status==="Delivered"? "green":o.status==="Shipped"?"blue":o.status==="Pending"?"amber":o.status==="Cancelled"?"red":"neutral"}>{o.status}</Status></td><td><select className="action-select" value={o.status} onChange={e=>onChange(o.id,e.target.value as Order["status"])} aria-label={"Change status for "+o.id}><option>Pending</option><option>Processing</option><option>Shipped</option><option>Delivered</option><option>Cancelled</option></select></td></tr>)}</tbody></table>{rows.length===0&&<EmptyState title="No matching orders" detail="Try another search or status filter."/>}</div>;
 }
-function ShieldCheckIcon(){return <CheckCircle2 size={18}/>}
+function ShieldCheckIcon(){return <CheckCircle2 size={18}/>}  const saveMinimumPrice=async(product:Product)=>{const min=Number(floorDrafts[product.id]??product.minSellingPrice??product.price);if(!Number.isFinite(min)||min<=0||min>product.price){flash("Minimum price must be positive and no higher than list price");return;}try{await new ConvexHttpClient(import.meta.env.VITE_CONVEX_URL).mutation(api.adminAuth.updateProductMinimumPrice,{token:authToken,productId:Number(product.id.replace("SF-","")),minSellingPrice:min});setProducts(old=>old.map(p=>p.id===product.id?{...p,minSellingPrice:min}:p));flash("Bargain floor saved");}catch(e:any){flash(e?.message??"Could not save minimum price");}};\n
