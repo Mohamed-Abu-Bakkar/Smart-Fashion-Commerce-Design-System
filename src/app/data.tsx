@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ConvexProvider, ConvexReactClient, useMutation, useQuery } from "convex/react";
 import { Tag, Package, Sparkles, Users, type LucideIcon } from "lucide-react";
 import { api } from "../../convex/_generated/api";
@@ -23,6 +23,9 @@ export type Product = {
   isTrending: boolean;
   material: string;
   desc: string;
+  stock?: number;
+  tags?: string[];
+  priceHistory?: { month: string; price: number }[];
 };
 
 export type RevenueRow = { day: string; rev: number; orders: number; sort: number };
@@ -318,15 +321,30 @@ export function useShopData(): ShopData {
   return useContext(ShopDataContext);
 }
 
-const GUEST_WISHLIST = [1, 3, 4];
+const GUEST_WISHLIST_KEY = "sf-guest-wishlist-v1";
+function loadGuestWishlist(): number[] {
+  try {
+    const raw = localStorage.getItem(GUEST_WISHLIST_KEY);
+    return raw ? JSON.parse(raw) as number[] : [1, 3, 4];
+  } catch { return [1, 3, 4]; }
+}
+function loadGuestIds(key: string): number[] {
+  try { return JSON.parse(localStorage.getItem(key) ?? "[]") as number[]; }
+  catch { return []; }
+}
 
 /** Per-user wishlist ids. Guests get local-only state; signed-in users get live DB rows. */
 export function useWishlist() {
   const { user } = useAuth();
-  const email = user && !user.guest ? user.email : null;
-  const liveIds = useQuery(api.shop.wishlistIds, email ? { userEmail: email } : "skip");
+  const sessionToken = user && !user.guest ? user.sessionToken ?? null : null;
+  const liveIds = useQuery(api.shop.wishlistIds, sessionToken ? { sessionToken } : "skip");
   const toggleLive = useMutation(api.shop.toggleWishlist);
-  const [guestIds, setGuestIds] = useState<number[]>(GUEST_WISHLIST);
+  const [guestIds, setGuestIds] = useState<number[]>(loadGuestWishlist);
+  useEffect(() => {
+    if (!sessionToken) {
+      try { localStorage.setItem(GUEST_WISHLIST_KEY, JSON.stringify(guestIds)); } catch { /* storage unavailable */ }
+    }
+  }, [sessionToken, guestIds]);
 
   const toggleGuest = useCallback((id: number) => {
     setGuestIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
@@ -334,41 +352,49 @@ export function useWishlist() {
 
   const toggle = useCallback(
     (id: number) => {
-      if (!email) {
+      if (!sessionToken) {
         toggleGuest(id);
         return Promise.resolve({ wishlisted: !guestIds.includes(id) });
       }
-      return toggleLive({ userEmail: email, productId: id });
+      return toggleLive({ sessionToken, productId: id });
     },
-    [email, toggleLive, toggleGuest, guestIds],
+    [sessionToken, toggleLive, toggleGuest, guestIds],
   );
 
   return useMemo(
-    () => ({ ids: email ? (liveIds ?? []) : guestIds, toggle, live: !!email }),
-    [email, liveIds, guestIds, toggle],
+    () => ({ ids: sessionToken ? (liveIds ?? []) : guestIds, toggle, live: !!sessionToken }),
+    [sessionToken, liveIds, guestIds, toggle],
   );
 }
 
 /** Per-user community votes & card likes. Guests get local-only state. */
 export function useVotes() {
   const { user } = useAuth();
-  const email = user && !user.guest ? user.email : null;
-  const liveLiked = useQuery(api.shop.likedCardIds, email ? { userEmail: email } : "skip");
-  const liveVoted = useQuery(api.shop.votedRequestIds, email ? { userEmail: email } : "skip");
+  const sessionToken = user && !user.guest ? user.sessionToken ?? null : null;
+  const liveLiked = useQuery(api.shop.likedCardIds, sessionToken ? { sessionToken } : "skip");
+  const liveVoted = useQuery(api.shop.votedRequestIds, sessionToken ? { sessionToken } : "skip");
   const toggleLikeLive = useMutation(api.shop.toggleCardLike);
   const toggleVoteLive = useMutation(api.shop.toggleRequestVote);
-  const [guestLiked, setGuestLiked] = useState<number[]>([]);
-  const [guestVoted, setGuestVoted] = useState<number[]>([]);
+  const [guestLiked, setGuestLiked] = useState<number[]>(() => loadGuestIds("sf-guest-liked-v1"));
+  const [guestVoted, setGuestVoted] = useState<number[]>(() => loadGuestIds("sf-guest-voted-v1"));
+  useEffect(() => {
+    if (!sessionToken) {
+      try {
+        localStorage.setItem("sf-guest-liked-v1", JSON.stringify(guestLiked));
+        localStorage.setItem("sf-guest-voted-v1", JSON.stringify(guestVoted));
+      } catch { /* storage unavailable */ }
+    }
+  }, [sessionToken, guestLiked, guestVoted]);
 
   const toggleCardLike = useCallback(
     (cardId: number) => {
-      if (!email) {
+      if (!sessionToken) {
         setGuestLiked((prev) => (prev.includes(cardId) ? prev.filter((i) => i !== cardId) : [...prev, cardId]));
         return Promise.resolve({ liked: !guestLiked.includes(cardId) });
       }
-      return toggleLikeLive({ userEmail: email, cardId });
+      return toggleLikeLive({ sessionToken, cardId });
     },
-    [email, toggleLikeLive, guestLiked],
+    [sessionToken, toggleLikeLive, guestLiked],
   );
 
   const toggleRequestVote = useCallback(
@@ -377,19 +403,19 @@ export function useVotes() {
         setGuestVoted((prev) => (prev.includes(requestId) ? prev.filter((i) => i !== requestId) : [...prev, requestId]));
         return Promise.resolve({ voted: !guestVoted.includes(requestId) });
       }
-      return toggleVoteLive({ userEmail: email, requestId });
+      return toggleVoteLive({ sessionToken, requestId });
     },
-    [email, toggleVoteLive, guestVoted],
+    [sessionToken, toggleVoteLive, guestVoted],
   );
 
   return useMemo(
     () => ({
-      likedCards: email ? (liveLiked ?? []) : guestLiked,
-      votedRequests: email ? (liveVoted ?? []) : guestVoted,
+      likedCards: sessionToken ? (liveLiked ?? []) : guestLiked,
+      votedRequests: sessionToken ? (liveVoted ?? []) : guestVoted,
       toggleCardLike,
       toggleRequestVote,
-      live: !!email,
+      live: !!sessionToken,
     }),
-    [email, liveLiked, liveVoted, guestLiked, guestVoted, toggleCardLike, toggleRequestVote],
+    [sessionToken, liveLiked, liveVoted, guestLiked, guestVoted, toggleCardLike, toggleRequestVote],
   );
 }
