@@ -127,7 +127,7 @@ function colourSearchTerms(value: string) {
   if (max < 55) return ["black", "dark"];
   if (min > 225) return ["white", "light"];
   if (max - min < 22) return ["grey", "gray", max < 105 ? "charcoal" : "silver"];
-  if (r > 150 && r > g * 1.25 && g > b * 1.2 && r < 190) return ["brown", "tan"];
+  if (r > 50 && r > g * 1.25 && g > b * 1.25 && r < 200) return ["brown", "tan"];
   if (r > 210 && g > 175 && b < 145) return ["beige", "tan", "cream"];
   if (r > g * 1.25 && b > g * 1.25) return ["purple", "violet"];
   if (b > r * 1.2 && b > g * 1.05) return ["blue", max < 125 ? "navy" : "blue"];
