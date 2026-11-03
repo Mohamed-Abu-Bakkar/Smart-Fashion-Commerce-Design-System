@@ -2422,7 +2422,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<MainTab>("home");
   const [selectedProduct, setSelectedProduct] = useState<Product>(PRODUCTS[0]);
   const commerce = useCommerce();
-  const cartItems = commerce.cart;
+  const [returnToHub, setReturnToHub] = useState(false);
   const [hubSection, setHubSection] = useState<"overview" | "cart" | "checkout" | "bargain" | "preorder" | "orders" | "wishlist" | "notifications" | "community" | "outfits" | "wardrobe" | "events" | "assistant">("overview");
   const { ids: wishlisted, toggle: toggleWishlist } = useWishlist(); // per-user, DB-backed
   const [pending, setPending] = useState<{ email: string; code: string } | null>(null);
@@ -2460,7 +2460,10 @@ export default function App() {
   };
   const goBack = () => {
     if (screen === "commerce-hub") setScreen(activeTab);
-    else if (screen === "product") setScreen(activeTab);
+    else if (screen === "product") {
+      setScreen(returnToHub ? "commerce-hub" : activeTab);
+      setReturnToHub(false);
+    }
     else if (screen === "bargain") setScreen("product");
     else if (screen === "cart") setScreen(activeTab);
     else if (screen === "checkout") setScreen("cart");
@@ -2519,7 +2522,7 @@ export default function App() {
       case "ai": return <AIScreen />;
       case "wishlist": return <WishlistScreen products={liveProducts.filter((p) => wishlisted.includes(p.id))} onProduct={openProduct} onRemove={toggleWishlist} />;
       case "profile": return <ProfileScreen onNav={navigate} user={auth.user ?? { name: "Guest", email: "", guest: true }} onSignOut={() => { void auth.signOut(); setActiveTab("home"); setScreen("home"); setAppState("login"); }} />;
-      case "product": return <ProductDetailScreen p={selectedProduct} onBack={goBack} wishlisted={wishlisted.includes(selectedProduct.id)} onWishlist={() => toggleWishlist(selectedProduct.id)} onAddToCart={() => addToCart(selectedProduct)} onBargain={() => navigate("bargain")} onCustomSize={() => navigate("custom-size")} cartCount={cartItems.length} onCart={() => navigate("cart")} />;
+      case "product": return <ProductDetailScreen p={selectedProduct} onBack={goBack} wishlisted={wishlisted.includes(selectedProduct.id)} onWishlist={() => toggleWishlist(selectedProduct.id)} onAddToCart={() => addToCart(selectedProduct)} onBargain={() => navigate("bargain")} onCustomSize={() => navigate("custom-size")} cartCount={commerce.cartCount} onCart={() => navigate("cart")} />;
       case "commerce-hub":
       case "bargain":
       case "cart":
@@ -2535,7 +2538,7 @@ export default function App() {
           selectedProduct={selectedProduct}
           commerce={commerce}
           onBack={goBack}
-          onProduct={openProduct}
+          onProduct={(product) => { setReturnToHub(true); openProduct(product); }}
         />;
       case "retailer": return <RetailerDashboard onBack={goBack} />;
       default: return null;
