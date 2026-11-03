@@ -88,7 +88,8 @@ export default function App(){
   const [mobileOpen,setMobileOpen]=useState(false);
   const [query,setQuery]=useState("");
   const [products,setProducts]=useState(initialProducts);
-  const [orders,setOrders]=useState(initialOrders);\n  const [liveBargains,setLiveBargains]=useState<any[]>([]);
+  const [orders,setOrders]=useState(initialOrders);
+  const [liveBargains,setLiveBargains]=useState<any[]>([]);
   const [dealState,setDealState]=useState<Record<string,string>>({});
   const [requestState,setRequestState]=useState<Record<string,string>>({});
   const [modal,setModal]=useState(false);
@@ -107,7 +108,8 @@ export default function App(){
   const [loginPassword,setLoginPassword]=useState("");
   const [loginError,setLoginError]=useState("");
   const [loginBusy,setLoginBusy]=useState(false);
-  const [stockDrafts,setStockDrafts]=useState<Record<string,string>>({});\n  const [floorDrafts,setFloorDrafts]=useState<Record<string,string>>({});
+  const [stockDrafts,setStockDrafts]=useState<Record<string,string>>({});
+  const [floorDrafts,setFloorDrafts]=useState<Record<string,string>>({});
   const [revenueSeries,setRevenueSeries]=useState(revenueData);
   const [liveRequests,setLiveRequests]=useState(requests);
   const [liveVotes,setLiveVotes]=useState([{title:"Obsidian Series",designer:"Studio Noir",votes:3241,comments:87,progress:78,img:"https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=300&h=180&fit=crop"},{title:"Glass & Shadow",designer:"Form Studio",votes:2109,comments:54,progress:51,img:"https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=300&h=180&fit=crop"},{title:"Velocity Pack",designer:"Motion Lab",votes:1834,comments:43,progress:34,img:"https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=300&h=180&fit=crop"}]);
@@ -123,7 +125,8 @@ export default function App(){
       if(!active) return;
       setAdminUser({name:session.name,email:session.email,role:session.role});
       if(data.products.length) setProducts(data.products.map((row:any)=>({id:"SF-"+row.id,name:row.name,category:row.category,price:row.price,stock:row.stock??null,minSellingPrice:row.minSellingPrice??null,status:(row.status==="Draft"?"Draft":row.stock!==undefined&&row.stock<10?"Low stock":"Active") as Product["status"],image:row.img,sku:row.sku??"SF-"+String(row.id).padStart(4,"0")})));
-      if(data.bargains?.length) setLiveBargains(data.bargains);\n      if(data.orders?.length) setOrders(data.orders.map((row:any)=>({id:row.orderCode,docId:row._id,customer:row.customerName,date:new Date(row.createdAt).toLocaleString(),items:row.items?.reduce((n:number,x:any)=>n+x.quantity,0)??0,total:row.total,status:row.orderStatus,paymentMode:row.paymentMode,paymentStatus:row.paymentStatus})));
+      if(data.bargains?.length) setLiveBargains(data.bargains);
+      if(data.orders?.length) setOrders(data.orders.map((row:any)=>({id:row.orderCode,docId:row._id,customer:row.customerName,date:new Date(row.createdAt).toLocaleString(),items:row.items?.reduce((n:number,x:any)=>n+x.quantity,0)??0,total:row.total,status:row.orderStatus,paymentMode:row.paymentMode,paymentStatus:row.paymentStatus})));
       if(data.revenue.length) setRevenueSeries(data.revenue.map((row:any)=>({day:row.day,revenue:Math.round(row.rev/1000),orders:row.orders})));
       if(data.requests.length) setLiveRequests(data.requests.map((row:any)=>({id:"CR-"+String(row.id).padStart(3,"0"),title:row.title,category:row.category,votes:row.votes,interested:row.interested,progress:Math.min(100,Math.round(row.votes/1500*100)),status:row.status,image:row.img})));
       if(data.votes.length) setLiveVotes(data.votes.map((row:any)=>({title:row.title,designer:row.designer,votes:row.likes,comments:row.comments,progress:row.progress,img:row.img})));
@@ -221,4 +224,4 @@ export default function App(){
 function OrderTable({rows,onChange}:{rows:Order[];onChange:(id:string,status:Order["status"])=>void}){
   return <div className="table-scroll"><table><thead><tr><th>ORDER</th><th>CUSTOMER</th><th>DATE</th><th>ITEMS</th><th>TOTAL</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>{rows.map(o=><tr key={o.id}><td><b>{o.id}</b></td><td><div className="customer-cell"><Avatar name={o.customer} size="sm"/>{o.customer}</div></td><td className="muted">{o.date}</td><td>{o.items}</td><td><b>{money(o.total)}</b></td><td><Status tone={o.status==="Delivered"? "green":o.status==="Shipped"?"blue":o.status==="Pending"?"amber":o.status==="Cancelled"?"red":"neutral"}>{o.status}</Status></td><td><select className="action-select" value={o.status} onChange={e=>onChange(o.id,e.target.value as Order["status"])} aria-label={"Change status for "+o.id}><option>Pending</option><option>Processing</option><option>Shipped</option><option>Delivered</option><option>Cancelled</option></select></td></tr>)}</tbody></table>{rows.length===0&&<EmptyState title="No matching orders" detail="Try another search or status filter."/>}</div>;
 }
-function ShieldCheckIcon(){return <CheckCircle2 size={18}/>}\n
+function ShieldCheckIcon(){return <CheckCircle2 size={18}/>}
