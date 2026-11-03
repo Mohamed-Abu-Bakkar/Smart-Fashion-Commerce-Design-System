@@ -10,8 +10,9 @@ async function sha256(value: string) {
 
 async function requireCustomer(ctx: any, token: string) {
   if (!token || token.length < 32) throw new ConvexError("Please sign in to continue.");
+  const tokenHash = await sha256(token);
   const session = await ctx.db.query("customerSessions")
-    .withIndex("by_token_hash", (q: any) => q.eq("tokenHash", await sha256(token))).unique();
+    .withIndex("by_token_hash", (q: any) => q.eq("tokenHash", tokenHash)).unique();
   if (!session || session.expiresAt <= Date.now()) throw new ConvexError("Your session expired. Sign in again.");
   const user = await ctx.db.get(session.userId);
   if (!user || !user.verified || user.blocked) throw new ConvexError("Account is not authorised.");
