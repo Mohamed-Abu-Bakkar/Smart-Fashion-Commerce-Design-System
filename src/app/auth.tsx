@@ -4,7 +4,7 @@ import { api } from "../../convex/_generated/api";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
-export type SessionUser = { name: string; email: string; guest: boolean };
+export type SessionUser = { name: string; email: string; guest: boolean; sessionToken?: string; sessionExpiresAt?: number };
 
 export type AuthError = { message: string; code?: string; demoCode?: string };
 
