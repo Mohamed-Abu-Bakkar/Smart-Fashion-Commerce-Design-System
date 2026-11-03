@@ -908,7 +908,7 @@ function DiscoverScreen({ onProduct, wishlisted, onWishlist }: {
 function AIScreen({ sessionToken, onProduct }: { sessionToken?: string; onProduct: (product: Product) => void }) {
   const PRODUCTS = useShopData().products;
   const { ids: wishlisted, toggle: toggleWishlist } = useWishlist();
-  const [messages, setMessages] = useState<Array<{ role: "ai" | "user"; text: string; imagePreview?: string }>>([
+  const [messages, setMessages] = useState<Array<{ role: "ai" | "user"; text: string; imagePreview?: string; context?: string }>>([
     { role: "ai", text: "Hi! I'm your AI Fashion Stylist ✨\n\nTell me your occasion, budget, colours or preferred style. You can also upload an outfit or inspiration photo and I'll analyse the visible garments, then reason over our live catalogue to build recommendations." },
   ]);
   const [input, setInput] = useState("");
@@ -973,7 +973,7 @@ function AIScreen({ sessionToken, onProduct }: { sessionToken?: string; onProduc
 
     const prompt = text || "Analyse this outfit and suggest pieces that would complete or refine the look.";
     const attachedPhoto = photo;
-    const history = messages.slice(-8).map(({ role, text: messageText }) => ({ role, text: messageText }));
+    const history = messages.slice(-8).map(({ role, text: messageText, context }) => ({ role, text: context ?? messageText }));
     setMessages((current) => [...current, { role: "user", text: prompt, ...(attachedPhoto ? { imagePreview: attachedPhoto.preview } : {}) }]);
     setInput("");
     setPhoto(null);
@@ -998,7 +998,13 @@ function AIScreen({ sessionToken, onProduct }: { sessionToken?: string; onProduc
       }).filter(Boolean);
       setMatches(mapped);
       setStyleResult(payload);
-      setMessages((current) => [...current, { role: "ai", text: payload.message ?? "Here are the closest catalogue matches." }]);
+      const replyText = payload.message ?? "Here are the closest catalogue matches."; 
+const replyContext = [
+  replyText,
+  payload.visionSummary ? "Visual read: " + payload.visionSummary : "",
+  payload.outfitPlan ? "Outfit direction: " + payload.outfitPlan : "",
+].filter(Boolean).join("\n");
+setMessages((current) => [...current, { role: "ai", text: replyText, context: replyContext }]);
     } catch (err: any) {
       const message = err?.message ?? "AI Stylist is temporarily unavailable.";
       setError(message);
@@ -1046,10 +1052,9 @@ function AIScreen({ sessionToken, onProduct }: { sessionToken?: string; onProduc
               <div className="aspect-square overflow-hidden relative"><img src={p.img} alt={p.name} className="w-full h-full object-cover" />{p.stock === 0 && <span className="absolute top-2 left-2 bg-amber-500 text-white text-[9px] font-bold px-2 py-1 rounded-full">Out of stock</span>}</div>
               <div className="p-2"><p className="text-[9px] text-[#7B61FF] font-semibold uppercase">{p.role}</p><p className="text-foreground text-[11px] font-semibold">{p.name}</p><p className="text-[#7B61FF] text-[11px] font-bold">{fmt(p.price)}</p><p className="text-muted-foreground text-[10px] mt-1">{p.reason}</p></div>
             </button>
-            <div className="px-2 pb-2">
-              {p.stock === 0
-                ? <button onClick={() => toggleWishlist(p.id)} className="text-[10px] font-bold text-[#7B61FF]">{wishlisted.includes(p.id) ? "♥ Wishlisted" : "♡ Add to wishlist"}</button>
-                : <span className="text-[10px] text-emerald-600">{p.stock == null ? "Availability not tracked" : "In stock"}</span>}
+            <div className="px-2 pb-2 flex items-center justify-between gap-2">
+              <span className={p.stock === 0 ? "text-[10px] text-amber-600" : "text-[10px] text-emerald-600"}>{p.stock === 0 ? "Out of stock" : p.stock == null ? "Availability not tracked" : "In stock"}</span>
+              <button onClick={() => toggleWishlist(p.id)} className="text-[10px] font-bold text-[#7B61FF]">{wishlisted.includes(p.id) ? "♥ Saved" : "♡ Wishlist"}</button>
             </div>
           </div>
         ))}</div></div>}
