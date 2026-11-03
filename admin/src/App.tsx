@@ -144,6 +144,34 @@ export default function App(){
   const filteredProducts=useMemo(()=>products.filter(p=>(p.name+" "+p.id+" "+p.category).toLowerCase().includes(query.toLowerCase())&&(filter==="All"||p.status===filter)),[products,query,filter]);
   const filteredOrders=useMemo(()=>orders.filter(o=>(o.id+" "+o.customer).toLowerCase().includes(query.toLowerCase())&&(filter==="All"||o.status===filter)),[orders,query,filter]);
   const flash=(message:string)=>{setNotice(message);window.setTimeout(()=>setNotice(""),2600)};
+  const signInAdmin=async(event:FormEvent<HTMLFormElement>)=>{
+    event.preventDefault();
+    if(loginBusy) return;
+    const url=import.meta.env.VITE_CONVEX_URL;
+    if(!url){setLoginError("Admin backend is not configured. Set VITE_CONVEX_URL and redeploy.");return;}
+    setLoginBusy(true);setLoginError("");
+    try{
+      const passwordHash=await hashAdminPassword(loginEmail,loginPassword);
+      const result=await new ConvexHttpClient(url).mutation(api.adminAuth.login,{email:loginEmail.trim().toLowerCase(),passwordHash});
+      sessionStorage.setItem(ADMIN_SESSION_KEY,result.token);
+      setAdminUser(result.user);
+      setAuthToken(result.token);
+      setLoginPassword("");
+      setBackendStatus("connected");
+    }catch(e:any){
+      setLoginError(e?.message??"Unable to sign in. Check your credentials and admin role.");
+    }finally{setLoginBusy(false);}
+  };
+  const signOutAdmin=async()=>{
+    const token=authToken;
+    sessionStorage.removeItem(ADMIN_SESSION_KEY);
+    setAuthToken("");setAdminUser(null);setLoginPassword("");setLoginError("");
+    if(token&&import.meta.env.VITE_CONVEX_URL){
+      try{await new ConvexHttpClient(import.meta.env.VITE_CONVEX_URL).mutation(api.adminAuth.logout,{token});}
+      catch(e){/* Local session is cleared even if remote revocation is unavailable. */}
+    }
+  };
+
   const changeOrder=async(id:string,status:Order["status"])=>{const url=import.meta.env.VITE_CONVEX_URL;if(!url||!authToken){flash("Admin connection unavailable");return;}try{await new ConvexHttpClient(url).mutation(api.adminAuth.updateOrderStatus,{token:authToken,orderId:(orders.find(o=>o.id===id)?.docId??id) as any,status});setOrders(old=>old.map(o=>o.id===id?{...o,status}:o));flash(id+" marked "+status);}catch(e:any){flash(e?.message??"Could not update order status");}};
   const saveStock=async(product:Product)=>{const stock=Number(stockDrafts[product.id]??product.stock??0);if(!Number.isInteger(stock)||stock<0){flash("Stock must be a non-negative whole number");return;}try{await new ConvexHttpClient(import.meta.env.VITE_CONVEX_URL).mutation(api.adminAuth.updateProductStock,{token:authToken,productId:Number(product.id.replace("SF-","")),stock});setProducts(old=>old.map(p=>p.id===product.id?{...p,stock,status:stock===0?"Draft":stock<10?"Low stock":"Active"}:p));flash("Inventory quantity saved");}catch(e:any){flash(e?.message??"Could not update stock");}};
   const saveMinimumPrice=async(product:Product)=>{const min=Number(floorDrafts[product.id]??product.minSellingPrice??product.price);if(!Number.isFinite(min)||min<=0||min>product.price){flash("Minimum price must be positive and no higher than list price");return;}try{await new ConvexHttpClient(import.meta.env.VITE_CONVEX_URL).mutation(api.adminAuth.updateProductMinimumPrice,{token:authToken,productId:Number(product.id.replace("SF-","")),minSellingPrice:min});setProducts(old=>old.map(p=>p.id===product.id?{...p,minSellingPrice:min}:p));flash("Bargain floor saved");}catch(e:any){flash(e?.message??"Could not save minimum price");}};
