@@ -1715,7 +1715,7 @@ function OrdersScreen({ onBack, order }: { onBack: () => void; order?: any }) {
             <div className="w-16 h-16 rounded-full bg-emerald-500 flex items-center justify-center mb-3"><Check size={28} className="text-white" strokeWidth={2.5} /></div>
             <h2 className="text-foreground font-bold text-xl mb-1" style={PP}>Order Placed! 🎉</h2>
             <p className="text-muted-foreground text-sm mb-4">Your order has been recorded</p>
-            <div className="bg-black/30 rounded-xl px-4 py-2"><span className="text-muted-foreground text-xs">Order ID: </span><span className="text-foreground text-xs font-mono font-bold">{order?.orderCode ?? "Order details unavailable"}</span></div>
+            <div className="bg-black/30 rounded-xl px-4 py-2"><span className="text-muted-foreground text-xs">Order ID: </span><span className="text-foreground text-xs font-mono font-bold">{currentOrder?.orderCode ?? "Order details unavailable"}</span></div>
           </div>
           <div className="bg-card border border-border rounded-2xl flex overflow-hidden">
             <img src={firstItem?.img ?? PRODUCTS[0].img} alt={firstItem?.name ?? PRODUCTS[0].name} className="w-24 h-24 object-cover bg-secondary flex-shrink-0" />
