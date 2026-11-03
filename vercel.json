@@ -15,7 +15,15 @@
       "dest": "api/$1"
     },
     {
-      "src": "/manifest.webmanifest",
+      "src": "/registerSW\\.js",
+      "dest": "/dist/registerSW.js"
+    },
+    {
+      "src": "/sw\\.js",
+      "dest": "/dist/sw.js"
+    },
+    {
+      "src": "/manifest\\.webmanifest",
       "dest": "/manifest.webmanifest"
     },
     {
@@ -37,6 +45,20 @@
         { "key": "Cache-Control", "value": "public, max-age=3600, must-revalidate" },
         { "key": "Content-Type", "value": "application/manifest+json" },
         { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
+    },
+    {
+      "source": "/registerSW\\.js",
+      "headers": [
+        { "key": "Content-Type", "value": "application/javascript" },
+        { "key": "Cache-Control", "value": "public, max-age=3600" }
+      ]
+    },
+    {
+      "source": "/sw\\.js",
+      "headers": [
+        { "key": "Content-Type", "value": "application/javascript" },
+        { "key": "Cache-Control", "value": "public, max-age=3600" }
       ]
     }
   ]
