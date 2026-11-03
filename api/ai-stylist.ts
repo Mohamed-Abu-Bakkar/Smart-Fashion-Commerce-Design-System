@@ -108,21 +108,25 @@ function buildSearchIntent(parsed: any, prompt: string, visionAnalysis: any): Se
   const budget = parseBudgetFromText(prompt);
   let keywords = safeStringArray(parsed?.keywords, 10);
   const categories = safeStringArray(parsed?.categories, 5);
-  const colours = safeStringArray(parsed?.colours ?? parsed?.colors, 5);
-  const materials = safeStringArray(parsed?.materials, 5);
+  let colours = safeStringArray(parsed?.colours ?? parsed?.colors, 5);
+  let materials = safeStringArray(parsed?.materials, 5);
   const sizes = safeStringArray(parsed?.sizes, 5);
   const styles = safeStringArray(parsed?.styles, 6);
 
   if (!keywords.length) keywords = fallbackKeywords(prompt);
   if (visionAnalysis) {
+    const visualGarments = Array.isArray(visionAnalysis.garments) ? visionAnalysis.garments.slice(0, 4) : [];
     const visualTerms = [
       ...safeStringArray(visionAnalysis.palette, 3),
       ...safeStringArray(visionAnalysis.aesthetic, 3),
-      ...(Array.isArray(visionAnalysis.garments)
-        ? visionAnalysis.garments.slice(0, 4).map((item: any) => safeText(item?.item, "", 40))
-        : []),
+      ...visualGarments.map((item: any) => safeText(item?.item, "", 40)),
     ].filter(Boolean);
+    const visualColours = visualGarments.map((item: any) => safeText(item?.visible_colour, "", 30)).filter(Boolean);
+    const visualMaterials = visualGarments.map((item: any) => safeText(item?.material_guess, "", 40))
+      .filter((item: string) => item && item.toLowerCase() !== "unclear");
     keywords = [...new Set([...keywords, ...visualTerms])].slice(0, 12);
+    colours = [...new Set([...colours, ...visualColours])].slice(0, 5);
+    materials = [...new Set([...materials, ...visualMaterials])].slice(0, 5);
   }
 
   const minPrice = Number.isFinite(parsed?.minPrice) && parsed.minPrice >= 0
@@ -131,7 +135,7 @@ function buildSearchIntent(parsed: any, prompt: string, visionAnalysis: any): Se
   const maxPrice = Number.isFinite(parsed?.maxPrice) && parsed.maxPrice >= 0
     ? parsed.maxPrice
     : budget.maxPrice;
-  const sizeMatches = prompt.match(/\b(XXXS|XXS|XS|S|M|L|XL|XXL|XXXL)\b/gi) ?? [];
+  const sizeMatches = [...prompt.matchAll(/\bsize\s*(?:is\s*)?(XXXS|XXS|XS|S|M|L|XL|XXL|XXXL)\b/gi)].map((match) => match[1]);
   const normalizedSizes = [...new Set([...sizes, ...sizeMatches.map((value) => value.toUpperCase())])].slice(0, 5);
 
   return {
