@@ -330,7 +330,9 @@ export const communityRequestsForUser = query({
   handler: async (ctx, args) => {
     await requireCustomer(ctx, args.token);
     const rows = await ctx.db.query("collectionRequests").collect();
-    return rows.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    return rows
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+      .map(({ userEmail: _privateEmail, ...request }) => request);
   },
 });
 
@@ -553,6 +555,10 @@ export const saveWardrobeItem = mutation({
     if (metadata.size > 5 * 1024 * 1024) {
       await ctx.storage.delete(args.storageId);
       throw new ConvexError("Wardrobe images must be 5 MB or smaller.");
+    }
+    if (!metadata.contentType?.startsWith("image/")) {
+      await ctx.storage.delete(args.storageId);
+      throw new ConvexError("Wardrobe uploads must be image files.");
     }
     return await ctx.db.insert("wardrobeItems", {
       userEmail: user.email, storageId: args.storageId, category,
