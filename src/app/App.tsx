@@ -33,13 +33,15 @@ import {
 import { useAuth, authErrorMessage, initialsOf, type SessionUser } from "./auth";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { useCommerce } from "./useCommerce";
+import { CustomerCommerceHub } from "./CustomerCommerceHub";
 type AppState = "splash" | "onboarding" | "login" | "otp" | "main";
 type MainTab = "home" | "discover" | "ai" | "wishlist" | "profile";
 type Screen =
   | MainTab
   | "product" | "bargain" | "cart" | "checkout" | "orders"
   | "notifications" | "custom-size" | "community" | "outfit-builder"
-  | "wardrobe" | "retailer";
+  | "wardrobe" | "retailer" | "commerce-hub";
 
 // ─── UTILS ───────────────────────────────────────────────────────────────────
 
@@ -1098,7 +1100,8 @@ function ProfileScreen({ onNav, user, onSignOut }: {
     {
       title: "Shopping",
       items: [
-        { icon: Package, label: "My Orders", sub: "12 orders", action: "orders" as Screen },
+        { icon: ShoppingBag, label: "Smart Commerce Hub", sub: "All shopping features", action: "commerce-hub" as Screen },
+        { icon: Package, label: "My Orders", sub: "Order history", action: "orders" as Screen },
         { icon: Heart, label: "Wishlist", sub: `${wishlistIds.length} saved`, action: null },
         { icon: Ruler, label: "Custom Size", sub: "Add measurements", action: "custom-size" as Screen },
         { icon: MapPin, label: "Addresses", sub: "2 saved", action: null },
@@ -2418,7 +2421,9 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [activeTab, setActiveTab] = useState<MainTab>("home");
   const [selectedProduct, setSelectedProduct] = useState<Product>(PRODUCTS[0]);
-  const [cartItems, setCartItems] = useState<Product[]>([]);
+  const commerce = useCommerce();
+  const cartItems = commerce.cart;
+  const [hubSection, setHubSection] = useState<"overview" | "cart" | "checkout" | "bargain" | "preorder" | "orders" | "wishlist" | "notifications" | "community" | "outfits" | "wardrobe" | "events" | "assistant">("overview");
   const { ids: wishlisted, toggle: toggleWishlist } = useWishlist(); // per-user, DB-backed
   const [pending, setPending] = useState<{ email: string; code: string } | null>(null);
   const [resendTick, setResendTick] = useState(0);
@@ -2433,9 +2438,29 @@ export default function App() {
 
   const isMainScreen = (["home", "discover", "ai", "wishlist", "profile"] as Screen[]).includes(screen);
 
-  const navigate = (s: Screen) => setScreen(s);
+  const navigate = (s: Screen) => {
+    const hubRoutes: Partial<Record<Screen, typeof hubSection>> = {
+      "commerce-hub": "overview",
+      cart: "cart",
+      checkout: "checkout",
+      bargain: "bargain",
+      "custom-size": "preorder",
+      orders: "orders",
+      notifications: "notifications",
+      community: "community",
+      "outfit-builder": "outfits",
+      wardrobe: "wardrobe",
+    };
+    if (hubRoutes[s]) {
+      setHubSection(hubRoutes[s]!);
+      setScreen("commerce-hub");
+      return;
+    }
+    setScreen(s);
+  };
   const goBack = () => {
-    if (screen === "product") setScreen(activeTab);
+    if (screen === "commerce-hub") setScreen(activeTab);
+    else if (screen === "product") setScreen(activeTab);
     else if (screen === "bargain") setScreen("product");
     else if (screen === "cart") setScreen(activeTab);
     else if (screen === "checkout") setScreen("cart");
@@ -2444,8 +2469,7 @@ export default function App() {
   };
 
     const openProduct = (p: Product) => { setSelectedProduct(p); setScreen("product"); };
-  const addToCart = (p: Product) =>
-    setCartItems((prev) => (prev.find((i) => i.id === p.id) ? prev : [...prev, p]));
+  const addToCart = (p: Product) => commerce.addToCart(p);
   const handleTab = (tab: MainTab) => { setActiveTab(tab); setScreen(tab); };
 
   const showLogin = () => (
@@ -2490,21 +2514,29 @@ export default function App() {
 
     // Main app screens
     switch (screen) {
-      case "home": return <HomeScreen onProduct={openProduct} wishlisted={wishlisted} onWishlist={toggleWishlist} cartCount={cartItems.length} onCart={() => navigate("cart")} onNav={navigate} userName={auth.user?.name ?? "Guest"} />;
+      case "home": return <HomeScreen onProduct={openProduct} wishlisted={wishlisted} onWishlist={toggleWishlist} cartCount={commerce.cartCount} onCart={() => navigate("cart")} onNav={navigate} userName={auth.user?.name ?? "Guest"} />;
       case "discover": return <DiscoverScreen onProduct={openProduct} wishlisted={wishlisted} onWishlist={toggleWishlist} />;
       case "ai": return <AIScreen />;
       case "wishlist": return <WishlistScreen products={liveProducts.filter((p) => wishlisted.includes(p.id))} onProduct={openProduct} onRemove={toggleWishlist} />;
-      case "profile": return <ProfileScreen onNav={navigate} user={auth.user ?? { name: "Guest", email: "", guest: true }} onSignOut={() => { auth.signOut(); setActiveTab("home"); setScreen("home"); setAppState("login"); }} />;
+      case "profile": return <ProfileScreen onNav={navigate} user={auth.user ?? { name: "Guest", email: "", guest: true }} onSignOut={() => { void auth.signOut(); setActiveTab("home"); setScreen("home"); setAppState("login"); }} />;
       case "product": return <ProductDetailScreen p={selectedProduct} onBack={goBack} wishlisted={wishlisted.includes(selectedProduct.id)} onWishlist={() => toggleWishlist(selectedProduct.id)} onAddToCart={() => addToCart(selectedProduct)} onBargain={() => navigate("bargain")} onCustomSize={() => navigate("custom-size")} cartCount={cartItems.length} onCart={() => navigate("cart")} />;
-      case "bargain": return <BargainingScreen p={selectedProduct} onBack={goBack} />;
-      case "cart": return <CartScreen items={cartItems} onBack={goBack} onCheckout={() => navigate("checkout")} onRemove={(id) => setCartItems((prev) => prev.filter((i) => i.id !== id))} />;
-      case "checkout": return <CheckoutScreen onBack={goBack} onSuccess={() => { setCartItems([]); navigate("orders"); }} userName={auth.user?.name ?? "Guest"} />;
-      case "orders": return <OrdersScreen onBack={goBack} />;
-      case "notifications": return <NotificationsScreen onBack={goBack} />;
-      case "custom-size": return <CustomSizeScreen onBack={goBack} />;
-      case "community": return <CommunityScreen onBack={goBack} />;
-      case "outfit-builder": return <OutfitBuilderScreen onBack={goBack} onProduct={openProduct} />;
-      case "wardrobe": return <WardrobeScreen onBack={goBack} onProduct={openProduct} />;
+      case "commerce-hub":
+      case "bargain":
+      case "cart":
+      case "checkout":
+      case "orders":
+      case "notifications":
+      case "custom-size":
+      case "community":
+      case "outfit-builder":
+      case "wardrobe":
+        return <CustomerCommerceHub
+          initialSection={hubSection}
+          selectedProduct={selectedProduct}
+          commerce={commerce}
+          onBack={goBack}
+          onProduct={openProduct}
+        />;
       case "retailer": return <RetailerDashboard onBack={goBack} />;
       default: return null;
     }
