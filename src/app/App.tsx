@@ -10,7 +10,7 @@ import {
   Ruler, Users, ThumbsUp, Layers, Mail, Lock,
   Clock, Inbox, Store, Shirt, ArrowUpRight,
   Sun, Moon, Monitor, Wallet, Banknote,
-  MoveVertical, MoveHorizontal, ArrowRight, Circle, NotebookPen,
+  MoveVertical, MoveHorizontal, ArrowRight, Circle, NotebookPen, Scan,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import {
@@ -32,6 +32,7 @@ import {
 } from "./data";
 import { useAuth, authErrorMessage, initialsOf, type SessionUser } from "./auth";
 import { useQuery, useAction, useMutation } from "convex/react";
+import { SmartCommerceExtras } from "./SmartCommerceExtras";
 import { api } from "../../convex/_generated/api";
 type AppState = "splash" | "onboarding" | "login" | "otp" | "main";
 type MainTab = "home" | "discover" | "ai" | "wishlist" | "profile";
@@ -39,7 +40,7 @@ type Screen =
   | MainTab
   | "product" | "bargain" | "cart" | "checkout" | "orders"
   | "notifications" | "custom-size" | "community" | "outfit-builder"
-  | "wardrobe" | "retailer";
+  | "wardrobe" | "retailer" | "smart-extras";
 
 // ─── UTILS ───────────────────────────────────────────────────────────────────
 
@@ -1041,6 +1042,7 @@ function ProfileScreen({ onNav, user, onSignOut }: {
       items: [
         { icon: Sparkles, label: "AI Preferences", sub: "Dark minimal", action: null },
         { icon: Shirt, label: "My Wardrobe", sub: "12 items", action: "wardrobe" as Screen },
+        { icon: Sparkles, label: "Smart Commerce Studio", sub: "Pre-orders, alerts, outfits & more", action: "smart-extras" as Screen },
         { icon: Store, label: "Retailer Dashboard", sub: "Studio Noir owner", action: "retailer" as Screen },
         { icon: Eye, label: "Recently Viewed", sub: "14 products", action: null },
       ],
@@ -2380,7 +2382,8 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [activeTab, setActiveTab] = useState<MainTab>("home");
   const [selectedProduct, setSelectedProduct] = useState<Product>(PRODUCTS[0]);
-  const [cartItems, setCartItems] = useState<Product[]>([]);\n  const [lastOrder, setLastOrder] = useState<any>(null);
+  const [cartItems, setCartItems] = useState<Product[]>([]);
+  const [lastOrder, setLastOrder] = useState<any>(null);
   const { ids: wishlisted, toggle: toggleWishlist } = useWishlist(); // per-user, DB-backed
   const [pending, setPending] = useState<{ email: string; code: string } | null>(null);
   const [resendTick, setResendTick] = useState(0);
@@ -2467,6 +2470,7 @@ export default function App() {
       case "community": return <CommunityScreen onBack={goBack} />;
       case "outfit-builder": return <OutfitBuilderScreen onBack={goBack} onProduct={openProduct} />;
       case "wardrobe": return <WardrobeScreen onBack={goBack} onProduct={openProduct} />;
+      case "smart-extras": return <SmartCommerceExtras products={liveProducts} sessionToken={auth.user?.sessionToken} userName={auth.user?.name ?? "Customer"} wishlistedIds={wishlisted} onBack={goBack} onProduct={openProduct} />;
       case "retailer": return <RetailerDashboard onBack={goBack} />;
       default: return null;
     }
