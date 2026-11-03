@@ -647,14 +647,14 @@ function HomeScreen({ onProduct, wishlisted, onWishlist, cartCount, onCart, onNa
             </button>
           </div>
         </div>
-        <div className="flex items-center bg-secondary border border-border rounded-2xl px-4 py-2.5 gap-3">
+        {/* <div className="flex items-center bg-secondary border border-border rounded-2xl px-4 py-2.5 gap-3">
           <Search size={14} className="text-muted-foreground flex-shrink-0" />
           <span className="text-muted-foreground/70 text-sm flex-1">Search clothes, brands, styles...</span>
           <div className="flex items-center gap-1 bg-[#7B61FF]/20 border border-[#7B61FF]/30 rounded-full px-2 py-0.5">
             <Sparkles size={9} className="text-[#7B61FF]" />
             <span className="text-[9px] text-[#7B61FF] font-bold">AI</span>
           </div>
-        </div>
+        </div> */}
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-hide">
@@ -861,11 +861,11 @@ function DiscoverScreen({ onProduct, wishlisted, onWishlist }: {
             ))}
           </div>
         )}
-        <div className="flex items-center bg-secondary border border-border rounded-2xl px-4 py-2.5 gap-3">
+        {/* <div className="flex items-center bg-secondary border border-border rounded-2xl px-4 py-2.5 gap-3">
           <Search size={14} className="text-muted-foreground flex-shrink-0" />
           <span className="text-muted-foreground/70 text-sm flex-1">Search in {filter}...</span>
           <Mic size={14} className="text-muted-foreground" />
-        </div>
+        </div> */}
       </div>
       <div className="flex-1 overflow-y-auto scrollbar-hide">
         <div className="px-5 pt-4 pb-6">
@@ -881,7 +881,7 @@ function DiscoverScreen({ onProduct, wishlisted, onWishlist }: {
           </div>
 
           {/* Price range */}
-          <div className="bg-card border border-border rounded-2xl p-4 mb-4">
+          {/* <div className="bg-card border border-border rounded-2xl p-4 mb-4">
             <div className="flex items-center justify-between mb-2">
               <p className="text-foreground text-xs font-semibold">Price Range</p>
               <span className="text-[#7B61FF] text-xs font-bold">₹500 – ₹8,000</span>
@@ -889,7 +889,7 @@ function DiscoverScreen({ onProduct, wishlisted, onWishlist }: {
             <div className="h-1.5 bg-muted rounded-full overflow-hidden">
               <div className="h-full bg-[#7B61FF] rounded-full" style={{ width: "70%" }} />
             </div>
-          </div>
+          </div> */}
 
           <p className="text-muted-foreground/70 text-[11px] mb-4">{filtered.length} items</p>
           <div className="grid grid-cols-2 gap-3">
