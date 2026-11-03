@@ -31,7 +31,7 @@ import {
   type ProductReview,
 } from "./data";
 import { useAuth, authErrorMessage, initialsOf, type SessionUser } from "./auth";
-import { useQuery } from "convex/react";
+import { useQuery, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 type AppState = "splash" | "onboarding" | "login" | "otp" | "main";
 type MainTab = "home" | "discover" | "ai" | "wishlist" | "profile";
@@ -905,105 +905,36 @@ function DiscoverScreen({ onProduct, wishlisted, onWishlist }: {
 // ─── AI SCREEN ───────────────────────────────────────────────────────────────
 
 function AIScreen() {
-  const PRODUCTS = useShopData().products; // live (Convex) with mock fallback
-  const [messages, setMessages] = useState([{
-    role: "ai",
-    text: "Hi! I'm your AI Fashion Assistant ✨\n\nDescribe your occasion, budget, or vibe — I'll curate perfect outfits instantly.",
-  }]);
+  const PRODUCTS = useShopData().products;
+  const searchProducts = useAction(api.aiStylist.search);
+  const { ids: wishlisted, toggle: toggleWishlist } = useWishlist();
+  const [messages, setMessages] = useState([{ role: "ai", text: "Hi! I'm your AI Fashion Assistant ✨\\n\\nDescribe your occasion, budget, style, colour or preferred fabric. I'll search the real catalogue and include unavailable pieces you can wishlist." }]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
-  const [showCards, setShowCards] = useState(false);
-  const prompts = ["Rooftop party under ₹4000 🌙", "Minimal streetwear 🎒", "Beach look 🏖️", "All black aesthetic 🖤"];
-
-  const send = (text: string) => {
-    if (!text.trim()) return;
-    setMessages((p) => [...p, { role: "user", text }]);
-    setInput(""); setTyping(true);
-    setTimeout(() => {
-      setMessages((p) => [...p, { role: "ai", text: `Perfect! Here are 4 curated looks for "${text.slice(0, 25)}${text.length > 25 ? "..." : ""}" — all matching your dark aesthetic. Tap to explore.` }]);
-      setTyping(false); setShowCards(true);
-    }, 1800);
+  const [matches, setMatches] = useState<Array<Product & { stock?: number | null; reason: string }>>([]);
+  const [error, setError] = useState("");
+  const prompts = ["Breathable outfit for a summer wedding under ₹3000", "Minimal streetwear in black", "Comfortable oversized cotton clothing", "Formal outfit for an evening event"];
+  const send = async (text: string) => {
+    if (!text.trim() || typing) return;
+    setMessages((p) => [...p, { role: "user", text }]); setInput(""); setTyping(true); setError(""); setMatches([]);
+    try {
+      const result = await searchProducts({ prompt: text.trim() });
+      const mapped = result.matches.map((m: any) => ({ ...m, original: m.price, discount: 0, rating: 0, reviews: 0, img: PRODUCTS.find((p) => p.id === m.id)?.img ?? "", isNew: false, isTrending: false }));
+      setMatches(mapped); setMessages((p) => [...p, { role: "ai", text: result.message }]);
+    } catch (e: any) { setError(e?.message ?? "AI search is temporarily unavailable."); setMessages((p) => [...p, { role: "ai", text: "I couldn't complete the catalogue search. Please try again in a moment." }]); }
+    finally { setTyping(false); }
   };
-
   return (
     <div className="h-full flex flex-col">
-      <div className="flex-shrink-0 bg-background/95 backdrop-blur-xl px-5 pt-2 pb-4 border-b border-border">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#7B61FF] to-[#4a3adb] flex items-center justify-center">
-            <Bot size={19} className="text-white" />
-          </div>
-          <div>
-            <h1 className="text-foreground font-bold text-sm" style={PP}>AI Stylist</h1>
-            <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />
-              <span className="text-emerald-600 dark:text-emerald-400 text-[10px] font-medium">Online · Instant</span>
-            </div>
-          </div>
-          <div className="ml-auto flex items-center gap-3">
-            <Camera size={17} className="text-muted-foreground" />
-            <Mic size={17} className="text-muted-foreground" />
-          </div>
-        </div>
-      </div>
+      <div className="flex-shrink-0 bg-background/95 backdrop-blur-xl px-5 pt-2 pb-4 border-b border-border"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#7B61FF] to-[#4a3adb] flex items-center justify-center"><Bot size={19} className="text-white" /></div><div><h1 className="text-foreground font-bold text-sm" style={PP}>AI Stylist</h1><div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 bg-emerald-400 rounded-full" /><span className="text-emerald-600 dark:text-emerald-400 text-[10px] font-medium">Groq catalogue search</span></div></div></div></div>
       <div className="flex-1 overflow-y-auto scrollbar-hide px-5 py-4 space-y-3">
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-            {msg.role === "ai" && (
-              <div className="w-7 h-7 rounded-full bg-[#7B61FF] flex items-center justify-center mr-2 flex-shrink-0 mt-auto">
-                <Bot size={12} className="text-white" />
-              </div>
-            )}
-            <div className={`max-w-[78%] px-4 py-3 rounded-2xl text-xs leading-relaxed ${msg.role === "user" ? "bg-[#7B61FF] text-white rounded-br-sm" : "bg-secondary border border-border text-secondary-foreground rounded-bl-sm"}`}
-              style={{ whiteSpace: "pre-line" }}>{msg.text}</div>
-          </div>
-        ))}
-        {typing && (
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-[#7B61FF] flex items-center justify-center flex-shrink-0">
-              <Bot size={12} className="text-white" />
-            </div>
-            <div className="bg-secondary border border-border px-4 py-3 rounded-2xl rounded-bl-sm">
-              <div className="flex gap-1">
-                {[0, 1, 2].map((i) => <div key={i} className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />)}
-              </div>
-            </div>
-          </div>
-        )}
-        {showCards && (
-          <div className="grid grid-cols-2 gap-2">
-            {PRODUCTS.slice(0, 4).map((p) => (
-              <div key={p.id} className="rounded-xl overflow-hidden bg-secondary border border-border cursor-pointer">
-                <div className="aspect-square overflow-hidden"><img src={p.img} alt={p.name} className="w-full h-full object-cover" /></div>
-                <div className="p-2">
-                  <p className="text-foreground text-[11px] font-semibold truncate">{p.name}</p>
-                  <p className="text-[#7B61FF] text-[11px] font-bold">{fmt(p.price)}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {messages.map((msg, i) => <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>{msg.role === "ai" && <div className="w-7 h-7 rounded-full bg-[#7B61FF] flex items-center justify-center mr-2 flex-shrink-0 mt-auto"><Bot size={12} className="text-white" /></div>}<div className={`max-w-[82%] px-4 py-3 rounded-2xl text-xs leading-relaxed ${msg.role === "user" ? "bg-[#7B61FF] text-white rounded-br-sm" : "bg-secondary border border-border text-secondary-foreground rounded-bl-sm"}`} style={{ whiteSpace: "pre-line" }}>{msg.text}</div></div>)}
+        {typing && <div className="text-xs text-muted-foreground pl-9">Searching product descriptions…</div>}{error && <p className="text-xs text-red-500">{error}</p>}
+        {matches.length > 0 && <div className="grid grid-cols-2 gap-2">{matches.map((p) => <div key={p.id} className="rounded-xl overflow-hidden bg-secondary border border-border"><div className="aspect-square overflow-hidden relative"><img src={p.img} alt={p.name} className="w-full h-full object-cover" />{p.stock === 0 && <span className="absolute top-2 left-2 bg-amber-500 text-white text-[9px] font-bold px-2 py-1 rounded-full">Out of stock</span>}</div><div className="p-2"><p className="text-foreground text-[11px] font-semibold">{p.name}</p><p className="text-[#7B61FF] text-[11px] font-bold">{fmt(p.price)}</p><p className="text-muted-foreground text-[10px] mt-1">{p.reason}</p>{p.stock === 0 ? <button onClick={() => toggleWishlist(p.id)} className="mt-2 text-[10px] font-bold text-[#7B61FF]">{wishlisted.includes(p.id) ? "♥ Wishlisted" : "♡ Add to wishlist"}</button> : <span className="text-[10px] text-emerald-600">{p.stock == null ? "Availability not tracked" : "In stock"}</span>}</div></div>)}</div>}
+        {matches.length === 0 && messages.length > 1 && !typing && !error && <p className="text-xs text-muted-foreground text-center">No matching products found yet.</p>}
       </div>
-      {messages.length <= 1 && (
-        <div className="flex-shrink-0 px-5 pb-3 overflow-x-auto scrollbar-hide">
-          <div className="flex gap-2 w-max">
-            {prompts.map((p) => (
-              <button key={p} onClick={() => send(p)}
-                className="px-3 py-2 bg-secondary border border-border rounded-full text-[11px] text-muted-foreground whitespace-nowrap">
-                {p}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      <div className="flex-shrink-0 px-5 pb-4 pt-2 border-t border-border bg-background/95 backdrop-blur-xl">
-        <div className="flex items-center gap-2 bg-secondary border border-border rounded-2xl px-4 py-3">
-          <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send(input)}
-            placeholder="Describe your perfect outfit..." className="flex-1 bg-transparent text-foreground text-sm outline-none placeholder:text-muted-foreground/60" />
-          <button onClick={() => send(input)} className="w-7 h-7 bg-[#7B61FF] rounded-full flex items-center justify-center flex-shrink-0">
-            <Send size={12} className="text-white" />
-          </button>
-        </div>
-      </div>
+      {messages.length <= 1 && <div className="flex-shrink-0 px-5 pb-3 overflow-x-auto scrollbar-hide"><div className="flex gap-2 w-max">{prompts.map((p) => <button key={p} onClick={() => send(p)} className="px-3 py-2 bg-secondary border border-border rounded-full text-[11px] text-muted-foreground whitespace-nowrap">{p}</button>)}</div></div>}
+      <div className="flex-shrink-0 px-5 pb-4 pt-2 border-t border-border bg-background/95 backdrop-blur-xl"><div className="flex items-center gap-2 bg-secondary border border-border rounded-2xl px-4 py-3"><input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send(input)} placeholder="Describe your perfect outfit..." className="flex-1 bg-transparent text-foreground text-sm outline-none placeholder:text-muted-foreground/60" /><button onClick={() => send(input)} disabled={typing} className="w-7 h-7 bg-[#7B61FF] rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-50"><Send size={12} className="text-white" /></button></div></div>
     </div>
   );
 }
