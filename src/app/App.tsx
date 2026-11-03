@@ -913,6 +913,7 @@ function AIScreen({ sessionToken, onProduct }: { sessionToken?: string; onProduc
   ]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
+  const [visionActive, setVisionActive] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [photo, setPhoto] = useState<{ dataUrl: string; preview: string; name: string } | null>(null);
   const [matches, setMatches] = useState<Array<Product & { stock?: number | null; reason: string; role: string }>>([]);
@@ -977,6 +978,7 @@ function AIScreen({ sessionToken, onProduct }: { sessionToken?: string; onProduc
     setInput("");
     setPhoto(null);
     setTyping(true);
+    setVisionActive(!!attachedPhoto);
     setError("");
     setMatches([]);
     setStyleResult(null);
@@ -1003,6 +1005,7 @@ function AIScreen({ sessionToken, onProduct }: { sessionToken?: string; onProduc
       setMessages((current) => [...current, { role: "ai", text: "I couldn't complete that styling request. Please try again." }]);
     } finally {
       setTyping(false);
+      setVisionActive(false);
     }
   };
 
@@ -1029,7 +1032,7 @@ function AIScreen({ sessionToken, onProduct }: { sessionToken?: string; onProduc
             </div>
           </div>
         ))}
-        {typing && <div className="text-xs text-muted-foreground pl-9">{photo ? "Analysing the outfit photo and reasoning over the catalogue…" : "Reasoning over your style request and the live catalogue…"}</div>}
+        {typing && <div className="text-xs text-muted-foreground pl-9">{visionActive ? "Analysing the outfit photo and reasoning over the catalogue…" : "Reasoning over your style request and the live catalogue…"}</div>}
         {error && <p className="text-xs text-red-500">{error}</p>}
 
         {styleResult?.visionSummary && <div className="rounded-xl border border-[#7B61FF]/20 bg-[#7B61FF]/5 p-3"><p className="text-[10px] uppercase tracking-wider text-[#7B61FF] font-bold mb-1">Visual outfit read</p><p className="text-xs text-foreground">{styleResult.visionSummary}</p></div>}
