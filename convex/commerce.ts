@@ -396,8 +396,8 @@ export const refreshWishlistAlerts = mutation({
       if (item.alertsEnabled !== false && item.lastKnownStock !== undefined && item.lastKnownStock > 2 && stock > 0 && stock <= 2) {
         await notify(ctx, email, "low_stock", "Almost sold out", product.name + ": only " + stock + " left.", product.id); generated++;
       }
-      if (item.alertsEnabled !== false && item.lastKnownDiscount !== undefined && item.lastKnownDiscount < 30 && product.discount >= 30) {
-        await notify(ctx, email, "sale", "Sale alert", product.name + " is now " + product.discount + "% off.", product.id); generated++;
+      if (item.alertsEnabled !== false && item.lastKnownDiscount !== undefined && product.discount > item.lastKnownDiscount) {
+        await notify(ctx, email, "discount_increased", "Discount increased", product.name + " discount moved from " + item.lastKnownDiscount + "% to " + product.discount + "%.", product.id); generated++;
       }
       await ctx.db.patch(item._id, { lastKnownPrice: product.price, lastKnownStock: stock, lastKnownDiscount: product.discount });
     }
