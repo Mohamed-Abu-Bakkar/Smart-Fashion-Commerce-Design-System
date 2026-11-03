@@ -1694,8 +1694,11 @@ function CheckoutScreen({ onBack, onSuccess, userName, items, sessionToken }: { 
 
 // ─── ORDERS ───────────────────────────────────────────────────────────────────
 
-function OrdersScreen({ onBack, order }: { onBack: () => void; order?: any }) {
+function OrdersScreen({ onBack, order, sessionToken }: { onBack: () => void; order?: any; sessionToken?: string }) {
   const PRODUCTS = useShopData().products; // live (Convex) with mock fallback
+  const savedOrders = useQuery(api.commerce.myOrders, sessionToken ? { token: sessionToken } : "skip");
+  const currentOrder = order ?? savedOrders?.[0];
+  const firstItem = currentOrder?.items?.[0];
   const steps = [
     { label: "Order Placed", time: "Today, 2:34 PM", done: true },
     { label: "Payment Confirmed", time: "Today, 2:35 PM", done: true },
