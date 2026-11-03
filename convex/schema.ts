@@ -31,6 +31,7 @@ export default defineSchema({
     sort: v.optional(v.number()),
     status: v.optional(v.string()),
     stock: v.optional(v.number()),
+    minSellingPrice: v.optional(v.number()),
     tags: v.optional(v.array(v.string())),
   })
     .index("by_product_id", ["id"])
