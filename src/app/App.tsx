@@ -1529,8 +1529,8 @@ function BargainingScreen({ p, onBack, onAddToCart, sessionToken }: { p: Product
   const sendOffer = async () => {
     if (!bargainId || !sessionToken || busy) return;
     const amount = Number(offer);
-    if (!Number.isFinite(amount) || amount < floorPrice || amount >= originalPrice) {
-      setError(`Offer must be at least ${fmt(floorPrice)} and below ${fmt(originalPrice)}.`);
+    if (!Number.isFinite(amount) || amount < floorPrice || amount > originalPrice) {
+      setError(`Offer must be between ${fmt(floorPrice)} and ${fmt(originalPrice)}.`);
       return;
     }
     setBusy(true); setError("");
@@ -2511,7 +2511,12 @@ export default function App() {
 
     const openProduct = (p: Product) => { setSelectedProduct(p); setScreen("product"); };
   const addToCart = (p: Product) =>
-    setCartItems((prev) => (prev.find((i) => i.id === p.id) ? prev : [...prev, p]));
+    setCartItems((prev) => {
+      const existing = prev.findIndex((i) => i.id === p.id);
+      if (existing < 0) return [...prev, p];
+      if ((p as any).bargainSessionId) return prev.map((item, index) => index === existing ? p : item);
+      return prev;
+    });
   const handleTab = (tab: MainTab) => { setActiveTab(tab); setScreen(tab); };
 
   const showLogin = () => (
