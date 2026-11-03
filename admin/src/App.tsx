@@ -95,6 +95,8 @@ export default function App(){
   const [notice,setNotice]=useState("");
   const [productName,setProductName]=useState("");
   const [productPrice,setProductPrice]=useState("");
+  const [productDescription,setProductDescription]=useState("");
+  const [productMinPrice,setProductMinPrice]=useState("");
   const [productCategory,setProductCategory]=useState("T-shirts");
   const [period,setPeriod]=useState("Last 7 days");
   const [filter,setFilter]=useState("All");
@@ -140,14 +142,14 @@ export default function App(){
   const flash=(message:string)=>{setNotice(message);window.setTimeout(()=>setNotice(""),2600)};
   const changeOrder=(id:string,status:Order["status"])=>{setOrders(old=>old.map(o=>o.id===id?{...o,status}:o));flash(id+" marked "+status.toLowerCase());};
   const createProduct=async()=>{
-    if(!productName.trim()||!productPrice||Number(productPrice)<=0){flash("Enter a product name and valid price");return;}
+    if(!productName.trim()||!productPrice||Number(productPrice)<=0||productDescription.trim().length<20||!productMinPrice||Number(productMinPrice)<=0||Number(productMinPrice)>Number(productPrice)){flash("Enter a description (20+ characters), valid price and minimum selling price not above list price");return;}
     const url=import.meta.env.VITE_CONVEX_URL;
     if(!url||!authToken){flash("Admin connection is unavailable");return;}
     try{
       const client=new ConvexHttpClient(url);
-      const created=await client.mutation(api.adminAuth.createProduct,{token:authToken,name:productName.trim(),category:productCategory,price:Number(productPrice),stock:0,img:"https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=120&h=120&fit=crop"});
+      const created=await client.mutation(api.adminAuth.createProduct,{token:authToken,name:productName.trim(),category:productCategory,price:Number(productPrice),stock:0,desc:productDescription.trim(),minSellingPrice:Number(productMinPrice),img:"https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=120&h=120&fit=crop"});
       setProducts(old=>[{id:"SF-"+created.id,name:productName.trim(),category:productCategory,price:Number(productPrice),stock:0,status:"Draft",image:"https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=120&h=120&fit=crop",sku:created.sku},...old]);
-      setModal(false);setProductName("");setProductPrice("");flash("Product draft saved to Convex");
+      setModal(false);setProductName("");setProductPrice("");setProductDescription("");setProductMinPrice("");flash("Product draft saved to Convex");
     }catch(e:any){flash(e?.message??"Could not save product");}
   };
   const saveStock=async(product:Product)=>{
@@ -264,7 +266,7 @@ export default function App(){
       <footer><span>© 2026 SF Commerce</span><span>Designed for thoughtful retail <span className="footer-heart">♥</span></span><span>Admin workspace · authenticated</span></footer>
     </main>
     {notice&&<div className="toast"><CheckCircle2 size={16}/>{notice}</div>}
-    {modal&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setModal(false)}}><div className="modal"><div className="modal-head"><div><span className="eyebrow">CATALOG</span><h3>Add a product</h3></div><button className="icon-btn" onClick={()=>setModal(false)}><X size={18}/></button></div><label>Product name<input value={productName} onChange={e=>setProductName(e.target.value)} placeholder="e.g. Everyday cotton shirt"/></label><div className="form-two"><label>Category<select value={productCategory} onChange={e=>setProductCategory(e.target.value)}>{["T-shirts","Hoodies","Shirts","Denim","Footwear","Accessories"].map(c=><option key={c}>{c}</option>)}</select></label><label>Price (₹)<input type="number" min="1" value={productPrice} onChange={e=>setProductPrice(e.target.value)} placeholder="1299"/></label></div><div className="modal-note"><AlertCircle size={15}/> This creates a draft product in the live Convex catalogue.</div><div className="modal-actions"><button className="btn btn-secondary" onClick={()=>setModal(false)}>Cancel</button><button className="btn btn-primary" onClick={createProduct}>Create draft <ArrowRight size={14}/></button></div></div></div>}
+    {modal&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setModal(false)}}><div className="modal"><div className="modal-head"><div><span className="eyebrow">CATALOG</span><h3>Add a product</h3></div><button className="icon-btn" onClick={()=>setModal(false)}><X size={18}/></button></div><label>Product name<input value={productName} onChange={e=>setProductName(e.target.value)} placeholder="e.g. Everyday cotton shirt"/></label><div className="form-two"><label>Category<select value={productCategory} onChange={e=>setProductCategory(e.target.value)}>{["T-shirts","Hoodies","Shirts","Denim","Footwear","Accessories"].map(c=><option key={c}>{c}</option>)}</select></label><label>Price (₹)<input type="number" min="1" value={productPrice} onChange={e=>setProductPrice(e.target.value)} placeholder="1299"/></label><label>Minimum selling price (₹)<input type="number" min="1" value={productMinPrice} onChange={e=>setProductMinPrice(e.target.value)} placeholder="e.g. 999"/></label></div><label>Product description *<textarea value={productDescription} onChange={e=>setProductDescription(e.target.value)} minLength={20} rows={4} placeholder="Describe fabric, fit, style, occasion, comfort, care and distinctive features. This powers AI Stylist matching."/></label><div className="modal-note"><AlertCircle size={15}/> This creates a draft product in the live Convex catalogue.</div><div className="modal-actions"><button className="btn btn-secondary" onClick={()=>setModal(false)}>Cancel</button><button className="btn btn-primary" onClick={createProduct}>Create draft <ArrowRight size={14}/></button></div></div></div>}
   </div>;
 }
 function OrderTable({rows,onChange}:{rows:Order[];onChange:(id:string,status:Order["status"])=>void}){
