@@ -138,3 +138,30 @@ export const updateCollectionRequest = mutation({
     return { ok: true };
   },
 });
+
+export const updateProductMinimumPrice = mutation({
+  args: { token: v.string(), productId: v.number(), minSellingPrice: v.number() },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx, args.token);
+    const product = await ctx.db.query("products").withIndex("by_product_id", (q) => q.eq("id", args.productId)).unique();
+    if (!product) throw new ConvexError("Product not found.");
+    if (!Number.isFinite(args.minSellingPrice) || args.minSellingPrice <= 0 || args.minSellingPrice > product.price) {
+      throw new ConvexError("Minimum selling price must be positive and cannot exceed the current list price.");
+    }
+    await ctx.db.patch(product._id, { minSellingPrice: args.minSellingPrice, updatedAt: Date.now() });
+    return { ok: true };
+  },
+});
+
+export const updateOrderStatus = mutation({
+  args: { token: v.string(), orderId: v.id("orders"), status: v.string() },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx, args.token);
+    const allowed = ["Pending", "Processing", "Shipped", "Delivered", "Cancelled"];
+    if (!allowed.includes(args.status)) throw new ConvexError("Invalid order status.");
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new ConvexError("Order not found.");
+    await ctx.db.patch(order._id, { orderStatus: args.status });
+    return { ok: true };
+  },
+});
