@@ -10,7 +10,7 @@ import {
   Ruler, Users, ThumbsUp, Layers, Mail, Lock,
   Clock, Inbox, Store, Shirt, ArrowUpRight,
   Sun, Moon, Monitor, Wallet, Banknote,
-  MoveVertical, MoveHorizontal, ArrowRight, Circle, NotebookPen,
+  MoveVertical, MoveHorizontal, ArrowRight, Circle, NotebookPen, Scan,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import {
