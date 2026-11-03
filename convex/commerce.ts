@@ -24,6 +24,9 @@ async function upsertNegotiatedCartLine(
   color: string,
   price: number,
 ) {
+  if (!Number.isFinite(price) || price <= 0 || price >= product.price) {
+    throw new Error("The negotiated price is invalid.");
+  }
   if (product.sizes.length && !product.sizes.includes(size)) {
     throw new Error("The selected size is not available.");
   }
@@ -91,7 +94,7 @@ export const cartForUser = query({
 export const addCartItem = mutation({
   args: {
     sessionToken: tokenArg, productId: v.number(), quantity: v.number(),
-    size: v.string(), color: v.string(), negotiatedPrice: v.optional(v.number()),
+    size: v.string(), color: v.string(),
   },
   handler: async (ctx, args) => {
     const email = await requireCustomer(ctx, args.sessionToken);
@@ -100,6 +103,7 @@ export const addCartItem = mutation({
     if (!product) throw new Error("Product unavailable.");
     if (product.stock !== undefined && product.stock < args.quantity) throw new Error("Not enough stock.");
     if (product.sizes.length && !product.sizes.includes(args.size)) throw new Error("Selected size unavailable.");
+    if (product.colors.length && !product.colors.includes(args.color)) throw new Error("Selected color unavailable.");
     const rows = await ctx.db.query("cartItems").withIndex("by_user_product", (q) => q.eq("userEmail", email).eq("productId", args.productId)).collect();
     const match = rows.find((row) => row.size === args.size && row.color === args.color);
     const quantity = (match?.quantity ?? 0) + args.quantity;
@@ -108,11 +112,9 @@ export const addCartItem = mutation({
     const now = Date.now();
     if (match) await ctx.db.patch(match._id, {
       quantity: Math.min(20, quantity), updatedAt: now,
-      ...(args.negotiatedPrice === undefined ? {} : { negotiatedPrice: args.negotiatedPrice }),
     });
     else await ctx.db.insert("cartItems", {
       userEmail: email, productId: args.productId, quantity: args.quantity, size: args.size, color: args.color,
-      ...(args.negotiatedPrice === undefined ? {} : { negotiatedPrice: args.negotiatedPrice }),
       addedAt: now, updatedAt: now,
     });
     return { ok: true };
@@ -171,6 +173,7 @@ export const mergeGuestCart = mutation({
       const product = products.find((p) => p.id === line.productId);
       if (!product) throw new Error("A guest cart product is unavailable.");
       if (product.sizes.length && !product.sizes.includes(line.size)) throw new Error("A guest cart size is unavailable.");
+      if (product.colors.length && !product.colors.includes(line.color)) throw new Error("A guest cart color is unavailable.");
       const key = [line.productId, line.size, line.color].join(":");
       const old = additions.get(key);
       additions.set(key, { ...line, quantity: Math.min(20, (old?.quantity ?? 0) + line.quantity) });
@@ -216,6 +219,10 @@ export const createOrderFromCart = mutation({
     const items = cart.map((row) => {
       const product = products.find((p) => p.id === row.productId)!;
       if (product.sizes.length && !product.sizes.includes(row.size)) throw new Error(product.name + " is no longer available in size " + row.size);
+      if (product.colors.length && !product.colors.includes(row.color)) throw new Error(product.name + " is no longer available in color " + row.color);
+      if (row.negotiatedPrice !== undefined && (!Number.isFinite(row.negotiatedPrice) || row.negotiatedPrice <= 0 || row.negotiatedPrice >= product.price)) {
+        throw new Error(product.name + " has an invalid or expired negotiated price. Remove it and add the item again.");
+      }
       return {
         productId: product.id, name: product.name, brand: product.brand, img: product.img,
         unitPrice: row.negotiatedPrice ?? product.price, quantity: row.quantity, size: row.size, color: row.color,
@@ -333,6 +340,7 @@ export const createPreOrder = mutation({
     const product = await ctx.db.query("products").withIndex("by_product_id", (q) => q.eq("id", args.productId)).unique();
     if (!product) throw new Error("Product unavailable.");
     if (!Number.isInteger(args.quantity) || args.quantity < 1 || args.quantity > 10) throw new Error("Quantity must be 1–10.");
+    if (!args.customMeasurements && product.sizes.length && !product.sizes.includes(args.size)) throw new Error("Selected standard size unavailable.");
     if (args.customMeasurements && Object.values(args.customMeasurements).some((x) => x <= 0 || x > 300)) throw new Error("Measurements must be 1–300 cm.");
     const now = Date.now();
     const id = await ctx.db.insert("preOrders", {
@@ -386,20 +394,24 @@ export const refreshWishlistAlerts = mutation({
     for (const item of items) {
       const product = products.find((p) => p.id === item.productId);
       if (!product) continue;
-      const stock = product.stock ?? 0;
+      const stock = product.stock;
       if (item.alertsEnabled !== false && item.lastKnownPrice !== undefined && product.price < item.lastKnownPrice) {
         await notify(ctx, email, "price_drop", "Wishlist price dropped", product.name + " is now ₹" + product.price, product.id); generated++;
       }
-      if (item.alertsEnabled !== false && item.lastKnownStock === 0 && stock > 0) {
+      if (item.alertsEnabled !== false && item.lastKnownStock === 0 && stock !== undefined && stock > 0) {
         await notify(ctx, email, "back_in_stock", "Back in stock", product.name + " is available again.", product.id); generated++;
       }
-      if (item.alertsEnabled !== false && item.lastKnownStock !== undefined && item.lastKnownStock > 2 && stock > 0 && stock <= 2) {
+      if (item.alertsEnabled !== false && item.lastKnownStock !== undefined && stock !== undefined && item.lastKnownStock > 2 && stock > 0 && stock <= 2) {
         await notify(ctx, email, "low_stock", "Almost sold out", product.name + ": only " + stock + " left.", product.id); generated++;
       }
       if (item.alertsEnabled !== false && item.lastKnownDiscount !== undefined && product.discount > item.lastKnownDiscount) {
         await notify(ctx, email, "discount_increased", "Discount increased", product.name + " discount moved from " + item.lastKnownDiscount + "% to " + product.discount + "%.", product.id); generated++;
       }
-      await ctx.db.patch(item._id, { lastKnownPrice: product.price, lastKnownStock: stock, lastKnownDiscount: product.discount });
+      await ctx.db.patch(item._id, {
+        lastKnownPrice: product.price,
+        lastKnownDiscount: product.discount,
+        ...(stock === undefined ? {} : { lastKnownStock: stock }),
+      });
     }
     return { generated };
   },
