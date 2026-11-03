@@ -1,20 +1,30 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
+// Customer-facing catalogue queries must never expose the retailer's private
+// bargaining floor. Admin-only queries live in adminAuth.ts and retain access.
+function publicProduct(product: any) {
+  if (!product) return product;
+  const { minSellingPrice: _privateMinimum, ...visible } = product;
+  return visible;
+}
+
 export const listProducts = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("products").order("asc").collect();
+    const products = await ctx.db.query("products").order("asc").collect();
+    return products.map(publicProduct);
   },
 });
 
 export const getProduct = query({
   args: { id: v.number() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const product = await ctx.db
       .query("products")
       .withIndex("by_product_id", (q) => q.eq("id", args.id))
       .unique();
+    return publicProduct(product);
   },
 });
 
@@ -22,7 +32,7 @@ export const trendingProducts = query({
   args: {},
   handler: async (ctx) => {
     const all = await ctx.db.query("products").collect();
-    return all.filter((p) => p.isTrending);
+    return all.filter((p) => p.isTrending).map(publicProduct);
   },
 });
 
@@ -30,18 +40,22 @@ export const newProducts = query({
   args: {},
   handler: async (ctx) => {
     const all = await ctx.db.query("products").collect();
-    return all.filter((p) => p.isNew);
+    return all.filter((p) => p.isNew).map(publicProduct);
   },
 });
 
 export const productsByCategory = query({
   args: { category: v.string() },
   handler: async (ctx, args) => {
-    if (args.category === "All") return await ctx.db.query("products").collect();
-    return await ctx.db
+    if (args.category === "All") {
+      const products = await ctx.db.query("products").collect();
+      return products.map(publicProduct);
+    }
+    const products = await ctx.db
       .query("products")
       .withIndex("by_category", (q) => q.eq("category", args.category))
       .collect();
+    return products.map(publicProduct);
   },
 });
 
