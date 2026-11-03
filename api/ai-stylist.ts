@@ -44,7 +44,18 @@ async function groqCompletion(apiKey: string, body: Record<string, unknown>) {
     signal: AbortSignal.timeout(18_000),
   });
 
-  if (!response.ok) throw new Error("Groq returned HTTP " + response.status + ".");
+  if (!response.ok) {
+    const rawError = await response.text().catch(() => "");
+    let providerMessage = "";
+    try {
+      const parsed = JSON.parse(rawError);
+      providerMessage = parsed?.error?.message ?? parsed?.message ?? "";
+    } catch {
+      providerMessage = rawError;
+    }
+    const detail = safeText(providerMessage, "Provider did not include an error message.", 180);
+    throw new Error("Groq returned HTTP " + response.status + ": " + detail);
+  }
   const payload = await response.json() as any;
   return parseJsonContent(payload.choices?.[0]?.message?.content);
 }
