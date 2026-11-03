@@ -151,6 +151,7 @@ export default defineSchema({
     expiresAt: v.number(),
     originalTotal: v.number(),
     currentOffer: v.number(),
+    pendingCounter: v.optional(v.number()),
     acceptedTotal: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
