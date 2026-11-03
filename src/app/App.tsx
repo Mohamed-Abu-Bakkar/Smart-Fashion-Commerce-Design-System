@@ -1012,7 +1012,7 @@ function AIScreen() {
 
 // ─── WISHLIST ─────────────────────────────────────────────────────────────────
 
-function WishlistScreen({ products, onProduct, onRemove }: {
+function WishlistScreen({ products, onProduct, onRemove, onManageAlerts }: {
   products: Product[]; onProduct: (p: Product) => void; onRemove: (id: number) => void; onManageAlerts: () => void;
 }) {
   if (products.length === 0) {
