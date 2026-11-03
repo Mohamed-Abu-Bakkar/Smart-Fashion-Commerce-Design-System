@@ -1,6 +1,19 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
+async function requireCustomer(ctx: any, token: string) {
+  if (!token || token.length < 32) throw new Error("Sign in to continue.");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  const tokenHash = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+  const session = await ctx.db.query("customerSessions")
+    .withIndex("by_token", (q: any) => q.eq("tokenHash", tokenHash)).unique();
+  if (!session || session.expiresAt <= Date.now()) throw new Error("Your session expired. Sign in again.");
+  const user = await ctx.db.query("users").withIndex("by_email", (q: any) => q.eq("email", session.userEmail)).unique();
+  if (!user || !user.verified || user.blocked === true) throw new Error("Your account is unavailable.");
+  return user.email as string;
+}
+
+
 export const listProducts = query({
   args: {},
   handler: async (ctx) => {
@@ -83,20 +96,21 @@ export const notifications = query({
 // ─── PER-USER: WISHLIST ──────────────────────────────────────────────────────
 
 export const wishlistIds = query({
-  args: { userEmail: v.string() },
+  args: { sessionToken: v.string() },
   handler: async (ctx, args) => {
+    const email = await requireCustomer(ctx, args.sessionToken);
     const rows = await ctx.db
       .query("wishlistItems")
-      .withIndex("by_user", (q) => q.eq("userEmail", args.userEmail.trim().toLowerCase()))
+      .withIndex("by_user", (q) => q.eq("userEmail", email))
       .collect();
     return rows.map((r) => r.productId);
   },
 });
 
 export const toggleWishlist = mutation({
-  args: { userEmail: v.string(), productId: v.number() },
+  args: { sessionToken: v.string(), productId: v.number() },
   handler: async (ctx, args) => {
-    const email = args.userEmail.trim().toLowerCase();
+    const email = await requireCustomer(ctx, args.sessionToken);
     const rows = await ctx.db
       .query("wishlistItems")
       .withIndex("by_user", (q) => q.eq("userEmail", email))
@@ -114,20 +128,21 @@ export const toggleWishlist = mutation({
 // ─── PER-USER: COMMUNITY VOTES & LIKES ───────────────────────────────────────
 
 export const likedCardIds = query({
-  args: { userEmail: v.string() },
+  args: { sessionToken: v.string() },
   handler: async (ctx, args) => {
+    const email = await requireCustomer(ctx, args.sessionToken);
     const rows = await ctx.db
       .query("cardLikes")
-      .withIndex("by_user", (q) => q.eq("userEmail", args.userEmail.trim().toLowerCase()))
+      .withIndex("by_user", (q) => q.eq("userEmail", email))
       .collect();
     return rows.map((r) => r.cardId);
   },
 });
 
 export const toggleCardLike = mutation({
-  args: { userEmail: v.string(), cardId: v.number() },
+  args: { sessionToken: v.string(), cardId: v.number() },
   handler: async (ctx, args) => {
-    const email = args.userEmail.trim().toLowerCase();
+    const email = await requireCustomer(ctx, args.sessionToken);
     const rows = await ctx.db
       .query("cardLikes")
       .withIndex("by_user", (q) => q.eq("userEmail", email))
@@ -146,20 +161,21 @@ export const toggleCardLike = mutation({
 });
 
 export const votedRequestIds = query({
-  args: { userEmail: v.string() },
+  args: { sessionToken: v.string() },
   handler: async (ctx, args) => {
+    const email = await requireCustomer(ctx, args.sessionToken);
     const rows = await ctx.db
       .query("requestVotes")
-      .withIndex("by_user", (q) => q.eq("userEmail", args.userEmail.trim().toLowerCase()))
+      .withIndex("by_user", (q) => q.eq("userEmail", email))
       .collect();
     return rows.map((r) => r.requestId);
   },
 });
 
 export const toggleRequestVote = mutation({
-  args: { userEmail: v.string(), requestId: v.number() },
+  args: { sessionToken: v.string(), requestId: v.number() },
   handler: async (ctx, args) => {
-    const email = args.userEmail.trim().toLowerCase();
+    const email = await requireCustomer(ctx, args.sessionToken);
     const rows = await ctx.db
       .query("requestVotes")
       .withIndex("by_user", (q) => q.eq("userEmail", email))
