@@ -85,7 +85,8 @@ export const verifyOtp = mutation({
       .unique();
     if (!user) throw new Error("Account not found. Please sign up first.");
     if (!user.verified) await ctx.db.patch(user._id, { verified: true });
-    const session = await issueCustomerSession(ctx, user._id);\n    return { name: user.name, email: user.email, ...session };
+    const session = await issueCustomerSession(ctx, user._id);
+    return { name: user.name, email: user.email, ...session };
   },
 });
 
@@ -123,6 +124,7 @@ export const login = mutation({
         demoCode: code,
       });
     }
-    return { name: user.name, email: user.email };
+    const session = await issueCustomerSession(ctx, user._id);
+    return { name: user.name, email: user.email, ...session };
   },
 });
