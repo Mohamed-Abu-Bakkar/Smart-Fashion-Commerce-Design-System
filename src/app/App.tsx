@@ -2575,9 +2575,9 @@ export default function App() {
                           <span className="text-[7px] text-white font-bold">{wishlisted.length}</span>
                         </div>
                       )}
-                      {id === "home" && cartItems.length > 0 && (
+                      {id === "home" && commerce.cartCount > 0 && (
                         <div className="absolute -top-1 -right-1.5 w-3.5 h-3.5 bg-red-500 rounded-full flex items-center justify-center border border-background">
-                          <span className="text-[7px] text-white font-bold">{cartItems.length}</span>
+                          <span className="text-[7px] text-white font-bold">{commerce.cartCount}</span>
                         </div>
                       )}
                     </div>
