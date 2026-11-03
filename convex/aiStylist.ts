@@ -1,5 +1,5 @@
 import { query } from "./_generated/server";
-import { ConvexError, v } from "convex/values";
+import { v } from "convex/values";
 
 async function sha256(value: string) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
