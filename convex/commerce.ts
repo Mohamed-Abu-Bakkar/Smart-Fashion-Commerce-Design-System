@@ -270,6 +270,17 @@ export const replyToBargain = mutation({
   },
 });
 
+
+export const bargainsForUser = query({
+  args: { sessionToken: tokenArg },
+  handler: async (ctx, args) => {
+    const email = await requireCustomer(ctx, args.sessionToken);
+    const rows = await ctx.db.query("bargains")
+      .withIndex("by_user", (q) => q.eq("userEmail", email)).collect();
+    return rows.sort((a, b) => b.updatedAt - a.updatedAt);
+  },
+});
+
 export const createPreOrder = mutation({
   args: {
     sessionToken: tokenArg, productId: v.number(), size: v.string(), quantity: v.number(),
