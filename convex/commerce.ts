@@ -19,6 +19,23 @@ async function requireCustomer(ctx: any, token: string) {
   return { user, session };
 }
 
+/**
+ * Seller counter-offers are generated inside the Convex transaction.
+ * They are always strictly above the private floor and at or below list price.
+ * Later counters move toward the floor without ever revealing it to the client.
+ */
+function randomCounterAboveFloor(floorTotal: number, listTotal: number, previousCounter?: number) {
+  const firstAllowed = Math.floor(floorTotal) + 1;
+  const lastAllowed = Math.floor(listTotal);
+  if (firstAllowed > lastAllowed) return listTotal;
+
+  const upperTarget = previousCounter === undefined
+    ? Math.floor((floorTotal + listTotal) / 2)
+    : Math.floor((floorTotal + previousCounter) / 2);
+  const upperBound = Math.min(lastAllowed, Math.max(firstAllowed, upperTarget));
+  return firstAllowed + Math.floor(Math.random() * (upperBound - firstAllowed + 1));
+}
+
 export const startBargain = mutation({
   args: { token: v.string(), items: v.array(v.object({ productId: v.number(), quantity: v.number(), sourceBargainId: v.optional(v.id("bargainSessions")) })) },
   handler: async (ctx, args) => {
@@ -48,9 +65,13 @@ export const startBargain = mutation({
       originalTotal += listUnitPrice * item.quantity;
       prepared.push({ productId: product.id, productName: product.name, quantity: item.quantity, listUnitPrice, floorUnitPrice: floor, agreedUnitPrice: listUnitPrice });
     }
+    const floorTotal = prepared.reduce((sum, item) => sum + item.floorUnitPrice * item.quantity, 0);
+    if (floorTotal >= originalTotal) {
+      throw new ConvexError("This cart has no discounted items eligible for bargaining right now.");
+    }
     const bargainId = await ctx.db.insert("bargainSessions", { userId: user._id, scope: "cart", status: "open", round: 0, expiresAt: now + 10 * 60 * 1000, originalTotal, currentOffer: originalTotal, createdAt: now, updatedAt: now });
     for (const item of prepared) await ctx.db.insert("bargainItems", { bargainId, ...item });
-    return { bargainId, originalTotal, expiresAt: now + 10 * 60 * 1000, floorTotal: prepared.reduce((sum, i) => sum + i.floorUnitPrice * i.quantity, 0) };
+    return { bargainId, originalTotal, expiresAt: now + 10 * 60 * 1000 };
   },
 });
 
@@ -62,12 +83,13 @@ export const startProductBargain = mutation({
     if (!product) throw new ConvexError("This product is no longer available.");
     if (typeof product.stock === "number" && product.stock < 1) throw new ConvexError("This product is currently out of stock.");
     const floor = product.minSellingPrice ?? product.price;
-    if (floor <= 0 || floor > product.price) throw new ConvexError("This product's minimum selling price needs admin review.");
+    if (floor <= 0 || floor > product.price) throw new ConvexError("This product's pricing needs retailer review.");
+    if (floor >= product.price) throw new ConvexError("This product is not eligible for a discounted bargain right now.");
     const now = Date.now();
     const expiresAt = now + 10 * 60 * 1000;
     const bargainId = await ctx.db.insert("bargainSessions", { userId: user._id, scope: "product", status: "open", round: 0, expiresAt, originalTotal: product.price, currentOffer: product.price, createdAt: now, updatedAt: now });
     await ctx.db.insert("bargainItems", { bargainId, productId: product.id, productName: product.name, quantity: 1, listUnitPrice: product.price, floorUnitPrice: floor, agreedUnitPrice: product.price });
-    return { bargainId, productId: product.id, productName: product.name, originalPrice: product.price, floorPrice: floor, expiresAt };
+    return { bargainId, productId: product.id, productName: product.name, originalPrice: product.price, expiresAt };
   },
 });
 
@@ -81,34 +103,83 @@ export const submitOffer = mutation({
       if (session.status === "open") await ctx.db.patch(session._id, { status: "expired" });
       throw new ConvexError("This offer expired. Start a new bargain.");
     }
-    if (session.round >= 3) throw new ConvexError("Maximum negotiation rounds reached.");
-    if (!Number.isFinite(args.offer) || args.offer <= 0 || args.offer > session.originalTotal) throw new ConvexError("Enter an offer below the cart total.");
-    const lines = await ctx.db.query("bargainItems").withIndex("by_bargain", (q) => q.eq("bargainId", session._id)).collect();
-    const floorTotal = lines.reduce((sum, i) => sum + i.floorUnitPrice * i.quantity, 0);
-    const nextRound = session.round + 1;
+    if (!Number.isFinite(args.offer) || args.offer <= 0 || args.offer > session.originalTotal) {
+      throw new ConvexError("Enter a positive offer no greater than the listed total.");
+    }
+
+    const lines = await ctx.db.query("bargainItems")
+      .withIndex("by_bargain", (q) => q.eq("bargainId", session._id))
+      .collect();
+    if (!lines.length) throw new ConvexError("No products were found in this bargain.");
+
+    // The customer's offer is checked against the private total floor here.
+    // A customer never receives that floor in a response or public query.
+    const floorTotal = lines.reduce((sum, item) => sum + item.floorUnitPrice * item.quantity, 0);
     const acceptingCounter = typeof session.pendingCounter === "number" && args.offer >= session.pendingCounter;
     const acceptedOffer = acceptingCounter ? session.pendingCounter! : args.offer;
-    const counter = Math.max(floorTotal, Math.ceil((session.originalTotal + args.offer) / 2));
-    if (acceptedOffer >= floorTotal && (acceptingCounter || acceptedOffer >= counter || nextRound === 3)) {
+    const nextRound = session.round + 1;
+
+    if (acceptedOffer >= floorTotal) {
       const allocation = lines.map((line) => {
-        const list = line.listUnitPrice * line.quantity;
-        const floor = line.floorUnitPrice * line.quantity;
-        const proportional = Math.max(floor, Math.round(acceptedOffer * list / session.originalTotal));
-        return { line, unit: Math.max(line.floorUnitPrice, Math.min(line.listUnitPrice, proportional / line.quantity)) };
+        const lineListTotal = line.listUnitPrice * line.quantity;
+        const lineFloorTotal = line.floorUnitPrice * line.quantity;
+        const proportional = Math.max(lineFloorTotal, Math.round(acceptedOffer * lineListTotal / session.originalTotal));
+        return {
+          line,
+          unit: Math.max(line.floorUnitPrice, Math.min(line.listUnitPrice, proportional / line.quantity)),
+        };
       });
-      let allocated = allocation.reduce((sum, x) => sum + x.unit * x.line.quantity, 0);
+
+      let allocated = allocation.reduce((sum, item) => sum + item.unit * item.line.quantity, 0);
       if (allocated > acceptedOffer) {
-        for (const x of allocation) {
-          const reduceBy = Math.min(x.unit - x.line.floorUnitPrice, (allocated - acceptedOffer) / x.line.quantity);
-          x.unit -= reduceBy; allocated -= reduceBy * x.line.quantity;
+        let remaining = allocated - acceptedOffer;
+        for (const item of allocation) {
+          if (remaining <= 0) break;
+          const availableReduction = (item.unit - item.line.floorUnitPrice) * item.line.quantity;
+          const reduction = Math.min(availableReduction, remaining);
+          item.unit -= reduction / item.line.quantity;
+          remaining -= reduction;
         }
+        allocated = allocation.reduce((sum, item) => sum + item.unit * item.line.quantity, 0);
       }
-      for (const x of allocation) await ctx.db.patch(x.line._id, { agreedUnitPrice: Math.max(x.line.floorUnitPrice, x.unit) });
-      await ctx.db.patch(session._id, { status: "accepted", round: nextRound, currentOffer: allocated, pendingCounter: undefined, acceptedTotal: allocated, updatedAt: Date.now() });
-      return { status: "accepted", round: nextRound, total: allocated, floorTotal, expiresAt: session.expiresAt };
+
+      for (const item of allocation) {
+        await ctx.db.patch(item.line._id, {
+          agreedUnitPrice: Math.max(item.line.floorUnitPrice, item.unit),
+        });
+      }
+
+      // Accepting the store's own counter stays on that round; a fresh
+      // customer offer that clears the floor completes the next round.
+      const acceptedRound = Math.min(3, acceptingCounter ? session.round : nextRound);
+      await ctx.db.patch(session._id, {
+        status: "accepted",
+        round: acceptedRound,
+        currentOffer: allocated,
+        pendingCounter: undefined,
+        acceptedTotal: allocated,
+        updatedAt: Date.now(),
+      });
+      return { status: "accepted", round: acceptedRound, total: allocated, expiresAt: session.expiresAt };
     }
-    await ctx.db.patch(session._id, { round: nextRound, currentOffer: args.offer, pendingCounter: counter, updatedAt: Date.now() });
-    return { status: "countered", round: nextRound, counterOffer: counter, floorTotal, expiresAt: session.expiresAt };
+
+    if (session.round >= 3) {
+      throw new ConvexError("You have reached the three-round limit. Accept the latest store counter-offer or start a new bargain.");
+    }
+
+    const counterOffer = randomCounterAboveFloor(floorTotal, session.originalTotal, session.pendingCounter);
+    await ctx.db.patch(session._id, {
+      round: nextRound,
+      currentOffer: args.offer,
+      pendingCounter: counterOffer,
+      updatedAt: Date.now(),
+    });
+    return {
+      status: "countered",
+      round: nextRound,
+      counterOffer,
+      expiresAt: session.expiresAt,
+    };
   },
 });
 
