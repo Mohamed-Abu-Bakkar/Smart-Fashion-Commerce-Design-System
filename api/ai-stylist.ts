@@ -183,7 +183,7 @@ export default async function handler(req: any, res: any) {
       model: REASONING_MODEL,
       temperature: 0.6,
       top_p: 0.95,
-      max_completion_tokens: 2200,
+      max_completion_tokens: 4000,
       reasoning_effort: "medium",
       reasoning_format: "hidden",
       response_format: { type: "json_object" },
@@ -249,10 +249,13 @@ export default async function handler(req: any, res: any) {
       models: { vision: imageDataUrl ? VISION_MODEL : null, reasoning: REASONING_MODEL },
     });
   } catch (error: any) {
-    const status = typeof error?.message === "string" && error.message.includes("Groq returned HTTP 429") ? 429 : 500;
-    return sendError(res, status, error?.message?.startsWith("Upload ") || error?.message?.startsWith("Image is too large")
+    const providerRateLimit = typeof error?.message === "string" && error.message.includes("Groq returned HTTP 429");
+    const invalidImage = typeof error?.message === "string" &&
+      (error.message.startsWith("Upload ") || error.message.startsWith("Image is too large") || error.message === "Invalid image upload.");
+    const status = providerRateLimit ? 429 : invalidImage ? 400 : 500;
+    return sendError(res, status, invalidImage
       ? error.message
-      : status === 429
+      : providerRateLimit
         ? "The AI Stylist is busy. Please try again shortly."
         : "I couldn't complete the styling request. Please try again.");
   }
