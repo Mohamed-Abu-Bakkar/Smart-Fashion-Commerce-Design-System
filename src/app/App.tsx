@@ -1016,7 +1016,7 @@ function AIScreen({ sessionToken, onProduct }: { sessionToken?: string; onProduc
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#7B61FF] to-[#4a3adb] flex items-center justify-center"><Bot size={19} className="text-white" /></div>
           <div className="min-w-0">
             <h1 className="text-foreground font-bold text-sm" style={PP}>AI Stylist</h1>
-            <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 bg-emerald-400 rounded-full" /><span className="text-emerald-600 dark:text-emerald-400 text-[10px] font-medium">Groq vision + reasoning</span></div>
+            <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 bg-emerald-400 rounded-full" /><span className="text-emerald-600 dark:text-emerald-400 text-[10px] font-medium">Qwen 3.8 vision · GPT-OSS 120B reasoning</span></div>
           </div>
         </div>
         {!sessionToken && <p className="mt-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 text-[11px] p-3">Sign in to activate AI Stylist. Recommendations use your session and the store's live catalogue.</p>}
@@ -1066,7 +1066,7 @@ function AIScreen({ sessionToken, onProduct }: { sessionToken?: string; onProduc
           <input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void send(input)} placeholder="Describe your perfect outfit…" disabled={!sessionToken} className="flex-1 min-w-0 bg-transparent text-foreground text-sm outline-none placeholder:text-muted-foreground/60 disabled:opacity-50" />
           <button onClick={() => void send(input)} disabled={!sessionToken || typing || uploadingImage || (!input.trim() && !photo)} className="w-8 h-8 bg-[#7B61FF] rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-40"><Send size={12} className="text-white" /></button>
         </div>
-        <p className="text-[9px] text-muted-foreground mt-2 text-center">Your photo is analysed for clothing details only and is not saved to your account.</p>
+        <p className="text-[9px] text-muted-foreground mt-2 text-center">Your photo is sent to Groq for clothing analysis and is not saved to your Smart Fashion account.</p>
       </div>
     </div>
   );
