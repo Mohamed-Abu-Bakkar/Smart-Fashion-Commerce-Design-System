@@ -84,6 +84,9 @@ export function CustomerCommerceHub({
   const setWishlistAlerts = useMutation(api.commerce.setWishlistAlerts);
   const getWishlistAlertSettings = useQuery(api.commerce.wishlistAlertSettings, token ? { sessionToken: token } : "skip");
   const refreshWishlistAlerts = useMutation(api.commerce.refreshWishlistAlerts);
+  useEffect(() => {
+    if (token) void refreshWishlistAlerts({ sessionToken: token }).catch(() => undefined);
+  }, [token, refreshWishlistAlerts]);
   const markRead = useMutation(api.commerce.markNotificationRead);
   const markAllRead = useMutation(api.commerce.markAllNotificationsRead);
   const createRequest = useMutation(api.commerce.createCollectionRequest);
