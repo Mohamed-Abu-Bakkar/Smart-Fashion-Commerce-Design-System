@@ -990,7 +990,9 @@ function AIScreen({ sessionToken, onProduct }: { sessionToken?: string; onProduc
         body: JSON.stringify({ sessionToken, prompt, imageDataUrl: attachedPhoto?.dataUrl, history }),
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error ?? "AI Stylist is temporarily unavailable.");
+      if (!response.ok) {
+        throw new Error(payload.error ?? `AI Stylist service returned HTTP ${response.status}.`);
+      }
 
       const mapped = (payload.matches ?? []).map((item: any) => {
         const product = PRODUCTS.find((candidate) => candidate.id === item.id);
