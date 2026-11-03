@@ -103,6 +103,65 @@ export default defineSchema({
     lastSeenAt: v.number(),
   }).index("by_token_hash", ["tokenHash"]).index("by_user", ["userId"]),
 
+  customerSessions: defineTable({
+    userId: v.id("users"),
+    tokenHash: v.string(),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+  }).index("by_token_hash", ["tokenHash"]).index("by_user", ["userId"]),
+
+  orders: defineTable({
+    orderCode: v.string(),
+    userId: v.id("users"),
+    customerName: v.string(),
+    customerEmail: v.string(),
+    address: v.string(),
+    phone: v.string(),
+    subtotal: v.number(),
+    discount: v.number(),
+    shipping: v.number(),
+    total: v.number(),
+    paymentMode: v.string(),
+    paymentStatus: v.string(),
+    orderStatus: v.string(),
+    bargainId: v.optional(v.id("bargainSessions")),
+    createdAt: v.number(),
+  }).index("by_user", ["userId"]).index("by_created_at", ["createdAt"]).index("by_code", ["orderCode"]),
+
+  orderItems: defineTable({
+    orderId: v.id("orders"),
+    productId: v.number(),
+    productName: v.string(),
+    image: v.string(),
+    quantity: v.number(),
+    unitPrice: v.number(),
+    lineTotal: v.number(),
+    size: v.string(),
+    color: v.string(),
+  }).index("by_order", ["orderId"]),
+
+  bargainSessions: defineTable({
+    userId: v.id("users"),
+    status: v.string(),
+    round: v.number(),
+    expiresAt: v.number(),
+    originalTotal: v.number(),
+    currentOffer: v.number(),
+    acceptedTotal: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user", ["userId"]).index("by_status", ["status"]),
+
+  bargainItems: defineTable({
+    bargainId: v.id("bargainSessions"),
+    productId: v.number(),
+    productName: v.string(),
+    quantity: v.number(),
+    listUnitPrice: v.number(),
+    floorUnitPrice: v.number(),
+    agreedUnitPrice: v.number(),
+  }).index("by_bargain", ["bargainId"]),
+
   otpCodes: defineTable({
     email: v.string(), // lowercase
     code: v.string(),
