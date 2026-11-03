@@ -909,7 +909,7 @@ function AIScreen({ sessionToken, onProduct }: { sessionToken?: string; onProduc
   const PRODUCTS = useShopData().products;
   const { ids: wishlisted, toggle: toggleWishlist } = useWishlist();
   const [messages, setMessages] = useState<Array<{ role: "ai" | "user"; text: string; imagePreview?: string; context?: string }>>([
-    { role: "ai", text: "Hi! I'm your AI Fashion Stylist ✨\n\nTell me your occasion, budget, colours or preferred style. You can also upload an outfit or inspiration photo and I'll analyse the visible garments, then reason over our live catalogue to build recommendations." },
+    { role: "ai", text: "Hi! I'm your AI Fashion Stylist ✨\n\nTell me your occasion, budget, colours or preferred style. You can also upload an outfit or inspiration photo and I'll analyse the visible garments, then I translate your request into search terms and find matching products in our live catalogue." },
   ]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
@@ -1001,8 +1001,8 @@ function AIScreen({ sessionToken, onProduct }: { sessionToken?: string; onProduc
       const replyText = payload.message ?? "Here are the closest catalogue matches."; 
 const replyContext = [
   replyText,
+  payload.keywords?.length ? "Search terms: " + payload.keywords.join(", ") : "",
   payload.visionSummary ? "Visual read: " + payload.visionSummary : "",
-  payload.outfitPlan ? "Outfit direction: " + payload.outfitPlan : "",
 ].filter(Boolean).join("\n");
 setMessages((current) => [...current, { role: "ai", text: replyText, context: replyContext }]);
     } catch (err: any) {
@@ -1022,7 +1022,7 @@ setMessages((current) => [...current, { role: "ai", text: replyText, context: re
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#7B61FF] to-[#4a3adb] flex items-center justify-center"><Bot size={19} className="text-white" /></div>
           <div className="min-w-0">
             <h1 className="text-foreground font-bold text-sm" style={PP}>AI Stylist</h1>
-            <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 bg-emerald-400 rounded-full" /><span className="text-emerald-600 dark:text-emerald-400 text-[10px] font-medium">Qwen 3.8 vision · GPT-OSS 120B reasoning</span></div>
+            <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 bg-emerald-400 rounded-full" /><span className="text-emerald-600 dark:text-emerald-400 text-[10px] font-medium">Qwen 3.8 vision · GPT-OSS 120B search reasoning</span></div>
           </div>
         </div>
         {!sessionToken && <p className="mt-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 text-[11px] p-3">Sign in to activate AI Stylist. Recommendations use your session and the store's live catalogue.</p>}
@@ -1038,15 +1038,16 @@ setMessages((current) => [...current, { role: "ai", text: replyText, context: re
             </div>
           </div>
         ))}
-        {typing && <div className="text-xs text-muted-foreground pl-9">{visionActive ? "Analysing the outfit photo and reasoning over the catalogue…" : "Reasoning over your style request and the live catalogue…"}</div>}
+        {typing && <div className="text-xs text-muted-foreground pl-9">{visionActive ? "Analysing the outfit photo and extracting search terms…" : "Understanding your request and searching the live catalogue…"}</div>}
         {error && <p className="text-xs text-red-500">{error}</p>}
 
         {styleResult?.visionSummary && <div className="rounded-xl border border-[#7B61FF]/20 bg-[#7B61FF]/5 p-3"><p className="text-[10px] uppercase tracking-wider text-[#7B61FF] font-bold mb-1">Visual outfit read</p><p className="text-xs text-foreground">{styleResult.visionSummary}</p></div>}
+        {!!styleResult?.keywords?.length && <div className="rounded-xl border border-[#7B61FF]/20 bg-[#7B61FF]/5 p-3"><p className="text-[10px] uppercase tracking-wider text-[#7B61FF] font-bold mb-2">Search terms understood</p><div className="flex flex-wrap gap-1.5">{styleResult.keywords.map((keyword: string) => <span key={keyword} className="rounded-full bg-background border border-border px-2.5 py-1 text-[10px] text-foreground">{keyword}</span>)}</div>{styleResult.searchSummary && <p className="text-[10px] text-muted-foreground mt-2">{styleResult.searchSummary}</p>}</div>}
         {styleResult?.outfitPlan && <div className="rounded-xl border border-border bg-card p-3"><p className="text-[10px] uppercase tracking-wider text-[#7B61FF] font-bold mb-1">Outfit direction</p><p className="text-xs text-foreground">{styleResult.outfitPlan}</p></div>}
         {!!styleResult?.colourSuggestions?.length && <div className="flex flex-wrap gap-1.5">{styleResult.colourSuggestions.map((colour: string) => <span key={colour} className="rounded-full bg-secondary border border-border px-2.5 py-1 text-[10px] text-foreground">{colour}</span>)}</div>}
         {!!styleResult?.stylingTips?.length && <div className="rounded-xl border border-border bg-card p-3"><p className="text-[10px] uppercase tracking-wider text-[#7B61FF] font-bold mb-2">Styling tips</p><ul className="space-y-1.5">{styleResult.stylingTips.map((tip: string, index: number) => <li key={index} className="text-xs text-foreground flex gap-2"><span className="text-[#7B61FF]">•</span>{tip}</li>)}</ul></div>}
 
-        {matches.length > 0 && <div><p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold mb-2">Catalogue picks</p><div className="grid grid-cols-2 gap-2">{matches.map((p) => (
+        {matches.length > 0 && <div><p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold mb-2">Products found in our catalogue</p><div className="grid grid-cols-2 gap-2">{matches.map((p) => (
           <div key={p.id} className="rounded-xl overflow-hidden bg-secondary border border-border">
             <button onClick={() => onProduct(p)} className="w-full text-left">
               <div className="aspect-square overflow-hidden relative"><img src={p.img} alt={p.name} className="w-full h-full object-cover" />{p.stock === 0 && <span className="absolute top-2 left-2 bg-amber-500 text-white text-[9px] font-bold px-2 py-1 rounded-full">Out of stock</span>}</div>
