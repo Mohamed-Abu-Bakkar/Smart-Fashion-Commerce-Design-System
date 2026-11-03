@@ -78,7 +78,7 @@ export const bootstrap = query({
       ctx.db.query("bargainSessions").order("desc").take(200),
     ]);
     const orderDetails = await Promise.all(orders.map(async (order: any) => ({ ...order, items: await ctx.db.query("orderItems").withIndex("by_order", (q) => q.eq("orderId", order._id)).collect() })));
-    const bargainDetails = await Promise.all(bargains.map(async (bargain: any) => ({ ...bargain, customer: (await ctx.db.get(bargain.userId))?.name ?? "Customer", items: await ctx.db.query("bargainItems").withIndex("by_bargain", (q) => q.eq("bargainId", bargain._id)).collect() })));
+    const bargainDetails = await Promise.all(bargains.map(async (bargain: any) => ({ ...bargain, customer: ((await ctx.db.get(bargain.userId)) as { name?: string } | null)?.name ?? "Customer", items: await ctx.db.query("bargainItems").withIndex("by_bargain", (q) => q.eq("bargainId", bargain._id)).collect() })));
     return { products, revenue, requests, votes, orders: orderDetails, bargains: bargainDetails };
   },
 });
