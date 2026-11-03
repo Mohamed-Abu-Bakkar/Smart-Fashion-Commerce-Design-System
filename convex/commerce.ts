@@ -15,6 +15,50 @@ async function requireCustomer(ctx: any, token: string) {
   return user.email as string;
 }
 
+
+async function upsertNegotiatedCartLine(
+  ctx: any,
+  email: string,
+  product: any,
+  size: string,
+  color: string,
+  price: number,
+) {
+  if (product.sizes.length && !product.sizes.includes(size)) {
+    throw new Error("The selected size is not available.");
+  }
+  if (product.colors.length && !product.colors.includes(color)) {
+    throw new Error("The selected color is not available.");
+  }
+  const rows = await ctx.db.query("cartItems")
+    .withIndex("by_user_product", (q: any) => q.eq("userEmail", email).eq("productId", product.id))
+    .collect();
+  const currentQuantity = rows.reduce((sum: number, row: any) => sum + row.quantity, 0);
+  if (product.stock !== undefined && currentQuantity + 1 > product.stock) {
+    throw new Error("There is not enough remaining stock for the negotiated item.");
+  }
+  const existing = rows.find((row: any) => row.size === size && row.color === color);
+  const now = Date.now();
+  if (existing) {
+    await ctx.db.patch(existing._id, {
+      quantity: existing.quantity + 1,
+      negotiatedPrice: price,
+      updatedAt: now,
+    });
+  } else {
+    await ctx.db.insert("cartItems", {
+      userEmail: email,
+      productId: product.id,
+      quantity: 1,
+      size,
+      color,
+      negotiatedPrice: price,
+      addedAt: now,
+      updatedAt: now,
+    });
+  }
+}
+
 async function notify(ctx: any, email: string, kind: string, title: string, body: string, productId?: number) {
   await ctx.db.insert("userNotifications", {
     userEmail: email, kind, title, body,
@@ -220,6 +264,8 @@ export const submitBargainOffer = mutation({
     if (!product) throw new Error("Product unavailable.");
     if (!Number.isFinite(args.offer) || args.offer < Math.ceil(product.price * .5) || args.offer >= product.price) throw new Error("Offer must be between 50% and 99% of list price.");
     if (product.stock !== undefined && product.stock < 1) throw new Error("Out of stock; request a pre-order instead.");
+    if (product.sizes.length && !product.sizes.includes(args.size)) throw new Error("Selected size unavailable.");
+    if (product.colors.length && !product.colors.includes(args.color)) throw new Error("Selected color unavailable.");
     const counter = Math.round(product.price * .93);
     const status = args.offer >= counter ? "accepted" : "countered";
     const now = Date.now();
@@ -229,10 +275,7 @@ export const submitBargainOffer = mutation({
       status, attempts: 1, createdAt: now, updatedAt: now,
     });
     if (status === "accepted") {
-      await ctx.db.insert("cartItems", {
-        userEmail: email, productId: product.id, quantity: 1, size: args.size, color: args.color,
-        negotiatedPrice: args.offer, addedAt: now, updatedAt: now,
-      });
+      await upsertNegotiatedCartLine(ctx, email, product, args.size, args.color, args.offer);
     }
     await notify(ctx, email, "bargain", status === "accepted" ? "Offer accepted" : "Seller counter-offer",
       status === "accepted" ? "Your demo offer for " + product.name + " was accepted." : "Demo counter-offer: ₹" + counter, product.id);
@@ -246,17 +289,16 @@ export const replyToBargain = mutation({
     const email = await requireCustomer(ctx, args.sessionToken);
     const row = await ctx.db.get(args.bargainId);
     if (!row || row.userEmail !== email) throw new Error("Negotiation not found.");
+    if (row.status === "accepted") return { status: "accepted", agreedPrice: row.counterOffer ?? row.customerOffer };
+    if (row.status === "closed") return { status: "closed" };
     const product = await ctx.db.query("products").withIndex("by_product_id", (q) => q.eq("id", row.productId)).unique();
     if (!product) throw new Error("Product unavailable.");
     const now = Date.now();
     if (args.action === "accept") {
       if (product.stock !== undefined && product.stock < 1) throw new Error("Product is now out of stock.");
       const price = row.counterOffer ?? row.customerOffer;
+      await upsertNegotiatedCartLine(ctx, email, product, args.size, args.color, price);
       await ctx.db.patch(row._id, { status: "accepted", updatedAt: now });
-      await ctx.db.insert("cartItems", {
-        userEmail: email, productId: row.productId, quantity: 1, size: args.size, color: args.color,
-        negotiatedPrice: price, addedAt: now, updatedAt: now,
-      });
       return { status: "accepted", agreedPrice: price };
     }
     if (args.action === "counter") {
