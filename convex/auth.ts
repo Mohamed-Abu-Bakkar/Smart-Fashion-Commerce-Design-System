@@ -2,7 +2,27 @@ import { mutation } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 
 const OTP_TTL_MS = 5 * 60 * 1000;
-const MAX_ATTEMPTS = 5;\nconst CUSTOMER_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;\n\nasync function sha256(value: string) {\n  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));\n  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");\n}\n\nasync function issueCustomerSession(ctx: any, userId: any) {\n  const bytes = new Uint8Array(32); crypto.getRandomValues(bytes);\n  const token = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");\n  const now = Date.now();\n  await ctx.db.insert("customerSessions", { userId, tokenHash: await sha256(token), createdAt: now, expiresAt: now + CUSTOMER_SESSION_TTL_MS });\n  return { sessionToken: token, sessionExpiresAt: now + CUSTOMER_SESSION_TTL_MS };\n}
+const MAX_ATTEMPTS = 5;
+const CUSTOMER_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+async function sha256(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function issueCustomerSession(ctx: any, userId: any) {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  const token = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  const now = Date.now();
+  await ctx.db.insert("customerSessions", {
+    userId,
+    tokenHash: await sha256(token),
+    createdAt: now,
+    expiresAt: now + CUSTOMER_SESSION_TTL_MS,
+  });
+  return { sessionToken: token, sessionExpiresAt: now + CUSTOMER_SESSION_TTL_MS };
+}
 
 function makeCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
