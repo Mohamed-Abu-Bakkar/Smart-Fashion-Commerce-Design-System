@@ -7,7 +7,7 @@ import type { CartLine, ShippingAddress } from "./useCommerce";
 
 type Section =
   | "overview" | "cart" | "checkout" | "bargain" | "preorder" | "orders" | "wishlist"
-  | "notifications" | "community" | "outfits" | "wardrobe" | "events" | "assistant";
+  | "price-history" | "notifications" | "community" | "outfits" | "wardrobe" | "events" | "assistant";
 
 type Commerce = {
   sessionToken: string | null;
@@ -29,6 +29,7 @@ const sections: { id: Section; title: string; detail: string }[] = [
   { id: "preorder", title: "Custom-size pre-order", detail: "Standard sizes or measurements" },
   { id: "orders", title: "My orders", detail: "Order history and payment status" },
   { id: "wishlist", title: "Wishlist alerts", detail: "Price, discount and stock changes" },
+  { id: "price-history", title: "Smart price history", detail: "Recorded low, average and high prices" },
   { id: "notifications", title: "Notifications", detail: "Personal activity and alerts" },
   { id: "community", title: "Fashion community", detail: "Request collections and vote" },
   { id: "outfits", title: "Outfit builder", detail: "Save combinations" },
@@ -103,6 +104,7 @@ export function CustomerCommerceHub({
   const [customSize, setCustomSize] = useState(false);
   const [measurements, setMeasurements] = useState({ height: "170", chest: "92", waist: "78", shoulder: "42", sleeve: "60" });
   const [preOrderNotes, setPreOrderNotes] = useState("");
+  const [preOrderQuantity, setPreOrderQuantity] = useState("1");
   const [address, setAddress] = useState<ShippingAddress>({ name: user?.name ?? "", phone: "", line1: "", city: "", state: "", postalCode: "" });
   const [paymentMethod, setPaymentMethod] = useState<"upi" | "cod">("upi");
   const [communityTitle, setCommunityTitle] = useState("");
@@ -142,6 +144,47 @@ export function CustomerCommerceHub({
   const wishlistProducts = products.filter((item) => wishlist.ids.includes(item.id));
   const savedMessages = chatHistory?.messages ?? [];
   const messages = token ? savedMessages : guestMessages;
+  const recordedHistoryProduct = product;
+  const recordedHistory = recordedHistoryProduct.priceHistory ?? [];
+  const historicalLow = recordedHistory.length ? Math.min(...recordedHistory.map((point) => point.price)) : null;
+  const historicalHigh = recordedHistory.length ? Math.max(...recordedHistory.map((point) => point.price)) : null;
+  const historicalAverage = recordedHistory.length
+    ? Math.round(recordedHistory.reduce((sum, point) => sum + point.price, 0) / recordedHistory.length)
+    : null;
+  const historicalLowPeriod = recordedHistory.find((point) => point.price === historicalLow)?.month ?? null;
+
+  const selectedOutfitProducts = products.filter((item) => outfitIds.includes(item.id));
+  const outfitTerms = selectedOutfitProducts.some((item) => /dress|formal/.test(item.category.toLowerCase()))
+    ? ["footwear", "shoe", "accessor", "bag", "watch"]
+    : selectedOutfitProducts.some((item) => /bottom|jean|denim|trouser|pant/.test(item.category.toLowerCase()))
+      ? ["top", "shirt", "hoodie", "t-shirt", "footwear", "shoe"]
+      : selectedOutfitProducts.some((item) => /top|shirt|hoodie|t-shirt|outerwear|jacket/.test(item.category.toLowerCase()))
+        ? ["bottom", "jean", "denim", "trouser", "footwear", "shoe"]
+        : ["footwear", "shoe", "accessor", "bag", "watch"];
+  const outfitSuggestions = selectedOutfitProducts.length
+    ? products.filter((item) => !outfitIds.includes(item.id) && outfitTerms.some((term) => {
+        const searchable = (item.category + " " + (item.tags ?? []).join(" ")).toLowerCase();
+        return searchable.includes(term);
+      })).slice(0, 6)
+    : [];
+  const wardrobeCategories = new Set((wardrobe ?? []).map((item: any) => String(item.category).toLowerCase()));
+  const wardrobeComplementTerms = wardrobeCategories.has("tops") || wardrobeCategories.has("outerwear")
+    ? ["bottom", "jean", "denim", "footwear", "shoe"]
+    : wardrobeCategories.has("bottoms")
+      ? ["top", "shirt", "hoodie", "footwear", "shoe"]
+      : wardrobeCategories.has("dresses")
+        ? ["footwear", "shoe", "accessor", "bag"]
+        : ["top", "shirt", "bottom", "jean", "footwear"];
+  const wardrobeSuggestions = products.filter((item) => {
+    const searchable = (item.category + " " + (item.tags ?? []).join(" ")).toLowerCase();
+    return wardrobeComplementTerms.some((term) => searchable.includes(term));
+  }).slice(0, 6);
+  const similarWishlistProducts = wishlistProducts.flatMap((saved) =>
+    products.filter((item) => item.id !== saved.id && !wishlist.ids.includes(item.id) &&
+      (item.category.toLowerCase() === saved.category.toLowerCase() ||
+       (item.tags ?? []).some((tag) => (saved.tags ?? []).includes(tag)))
+    ).slice(0, 3)
+  ).filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index).slice(0, 6);
 
   const wishlistAlert = async (id: number, enabled: boolean) => {
     if (!requireCloud()) return;
@@ -173,13 +216,14 @@ export function CustomerCommerceHub({
   const submitPreOrder = async () => {
     if (!requireCloud()) return;
     await run(() => createPreOrder({
-      sessionToken: token!, productId: product.id, size, quantity: 1, notes: preOrderNotes,
+      sessionToken: token!, productId: product.id, size, quantity: Number(preOrderQuantity), notes: preOrderNotes,
       ...(customSize ? { customMeasurements: {
         height: Number(measurements.height), chest: Number(measurements.chest), waist: Number(measurements.waist),
         shoulder: Number(measurements.shoulder), sleeve: Number(measurements.sleeve),
       } } : {}),
     }), "Pre-order request saved. Retailer confirmation is still required; no payment was taken.");
     setPreOrderNotes("");
+    setPreOrderQuantity("1");
   };
 
   const checkout = async () => {
@@ -368,6 +412,7 @@ export function CustomerCommerceHub({
           <div className="flex items-center gap-3"><img src={product.img} alt={product.name} className="w-14 h-14 rounded-xl object-cover"/><div><p className="text-foreground text-sm font-semibold">{product.name}</p><p className="text-muted-foreground text-xs">{currency(product.price)}</p></div></div>
           <div className="flex gap-2">{["Standard", "Custom measurements"].map((name, i) => <button key={name} onClick={() => setCustomSize(i === 1)} className={(customSize === (i === 1) ? "bg-[#7B61FF] text-white" : "bg-secondary text-foreground") + " flex-1 py-2.5 rounded-xl text-xs font-semibold"}>{name}</button>)}</div>
           <div className="grid grid-cols-4 gap-2">{(product.sizes.length ? product.sizes : ["XS", "S", "M", "L", "XL", "XXL"]).map((value) => <button key={value} onClick={() => setSize(value)} className={(size === value ? "bg-[#7B61FF] text-white" : "bg-secondary text-foreground") + " rounded-lg py-2 text-xs"}>{value}</button>)}</div>
+          <label className="block text-muted-foreground text-xs">Quantity (1–10)<input type="number" min="1" max="10" value={preOrderQuantity} onChange={(e) => setPreOrderQuantity(e.target.value)} className="w-full mt-1 bg-secondary border border-border rounded-xl px-3 py-3 text-foreground text-sm"/></label>
           {customSize && <div className="grid grid-cols-2 gap-2">{(Object.keys(measurements) as (keyof typeof measurements)[]).map((key) => <label key={key} className="bg-secondary rounded-xl p-3"><span className="block text-muted-foreground text-[10px] capitalize">{key} (cm)</span><input type="number" value={measurements[key]} onChange={(e) => setMeasurements((old) => ({ ...old, [key]: e.target.value }))} className="w-full mt-1 bg-transparent text-foreground text-sm"/></label>)}</div>}
           <textarea value={preOrderNotes} onChange={(e) => setPreOrderNotes(e.target.value)} placeholder="Tailoring notes (optional)" className="w-full bg-secondary border border-border rounded-xl p-3 text-foreground text-xs min-h-20"/>
           <button disabled={busy} onClick={() => void submitPreOrder()} className="w-full bg-[#7B61FF] text-white py-3 rounded-xl text-xs font-bold">Save pre-order request</button>
@@ -402,6 +447,24 @@ export function CustomerCommerceHub({
           <button disabled={busy || !token} onClick={() => void run(() => refreshWishlistAlerts({ sessionToken: token! }), "Wishlist alerts checked against the current catalog.")} className="w-full bg-secondary border border-border text-foreground py-3 rounded-xl text-xs">Check catalog for changes</button>
         </div>;
 
+      case "price-history":
+        return <div className="space-y-3">
+          <div className="bg-card border border-border rounded-2xl p-4 space-y-2">
+            <h3 className="text-foreground text-sm font-semibold">Recorded price snapshots</h3>
+            <p className="text-muted-foreground text-[10px]">Select a product. This view uses saved catalog snapshots only; it does not forecast future prices or invent buying windows.</p>
+            {productPicker}
+            {recordedHistory.length > 1 ? <>
+              <div className="grid grid-cols-3 gap-2 pt-2">
+                <div><p className="text-muted-foreground text-[9px]">Lowest recorded</p><b className="text-foreground text-xs">{currency(historicalLow!)}</b></div>
+                <div><p className="text-muted-foreground text-[9px]">Average</p><b className="text-foreground text-xs">{currency(historicalAverage!)}</b></div>
+                <div><p className="text-muted-foreground text-[9px]">Highest recorded</p><b className="text-foreground text-xs">{currency(historicalHigh!)}</b></div>
+              </div>
+              <p className="text-emerald-600 dark:text-emerald-400 text-xs">Lowest recorded period: {historicalLowPeriod}</p>
+              <div className="space-y-2">{recordedHistory.map((point, index) => <div key={String(point.month) + index} className="flex items-center justify-between border-b border-border pb-2"><span className="text-muted-foreground text-xs">{point.month}</span><b className="text-foreground text-xs">{currency(point.price)}</b></div>)}</div>
+            </> : <p className="text-muted-foreground text-xs py-4">There are not enough recorded price snapshots for {recordedHistoryProduct.name}. Historical low, average and high will appear after actual price changes are recorded.</p>}
+          </div>
+        </div>;
+
       case "notifications":
         return <div className="space-y-2">
           <div className="flex justify-end"><button onClick={() => token && void run(() => markAllRead({ sessionToken: token }), "All notifications marked as read.")} className="text-[#7B61FF] text-xs font-semibold">Mark all read</button></div>
@@ -421,25 +484,27 @@ export function CustomerCommerceHub({
 
       case "outfits":
         return <div className="space-y-3"><input value={outfitName} onChange={(e) => setOutfitName(e.target.value)} className="w-full bg-secondary border border-border rounded-xl p-3 text-foreground text-sm" placeholder="Outfit name"/><p className="text-muted-foreground text-xs">Select products to combine in one outfit.</p>{products.map((item) => <label key={item.id} className="bg-card border border-border rounded-xl p-2 flex items-center gap-3"><input type="checkbox" checked={outfitIds.includes(item.id)} onChange={() => toggleOutfit(item.id)}/><img src={item.img} alt={item.name} className="w-12 h-12 rounded-lg object-cover"/><span className="text-foreground text-xs flex-1">{item.name}</span><span className="text-[#7B61FF] text-xs">{currency(item.price)}</span></label>)}<div className="flex justify-between text-sm text-foreground"><span>{outfitIds.length} items</span><b>{currency(products.filter((item) => outfitIds.includes(item.id)).reduce((sum, item) => sum + item.price, 0))}</b></div><button disabled={busy || !outfitIds.length} onClick={() => void saveCurrentOutfit()} className="w-full bg-[#7B61FF] text-white py-3 rounded-xl text-xs font-bold">Save outfit</button>
+          {outfitSuggestions.length > 0 && <div className="space-y-2 pt-2"><h3 className="text-foreground text-sm font-semibold">Complementary catalog suggestions</h3><p className="text-muted-foreground text-[10px]">Rule-based matches from the categories you selected; choose items to complete the combination.</p>{outfitSuggestions.map((item) => <button key={item.id} onClick={() => toggleOutfit(item.id)} className="w-full bg-card border border-border rounded-xl p-2 flex items-center gap-3 text-left"><img src={item.img} alt={item.name} className="w-10 h-10 rounded-lg object-cover"/><span className="text-foreground text-xs flex-1">{item.name}</span><span className="text-[#7B61FF] text-[10px]">Add to outfit</span></button>)}</div>}
           <h3 className="text-foreground text-sm font-semibold pt-3">Saved outfits</h3>{(outfits ?? []).map((item: any) => <div key={item._id} className="bg-card border border-border rounded-xl p-3"><b className="text-foreground text-xs">{item.name}</b><p className="text-muted-foreground text-[10px] mt-1">{item.products.map((p: Product) => p.name).join(" · ")}</p></div>)}
         </div>;
 
       case "events":
         return <div className="space-y-3"><div className="bg-card border border-border rounded-2xl p-4 space-y-2"><label className="text-muted-foreground text-xs">Occasion</label><select value={eventName} onChange={(e) => { setEventName(e.target.value); setEventIds([]); }} className="w-full bg-secondary rounded-xl p-3 text-foreground text-sm">{["Wedding", "College", "Office", "Gym", "Vacation", "Party"].map((item) => <option key={item}>{item}</option>)}</select><label className="text-muted-foreground text-xs">Budget (₹)</label><input type="number" value={eventBudget} onChange={(e) => setEventBudget(e.target.value)} className="w-full bg-secondary rounded-xl p-3 text-foreground text-sm"/><p className="text-muted-foreground text-[10px]">Suggestions use product category and listed price rules, not a connected generative AI.</p></div>
           {eventRecommendations.map((item) => <label key={item.id} className="bg-card border border-border rounded-xl p-3 flex gap-3 items-center"><input type="checkbox" checked={eventIds.includes(item.id)} onChange={() => setEventIds((prev) => prev.includes(item.id) ? prev.filter((id) => id !== item.id) : [...prev, item.id])}/><img src={item.img} alt={item.name} className="w-12 h-12 rounded-lg object-cover"/><span className="text-foreground text-xs flex-1">{item.name}</span><span className="text-[#7B61FF] text-xs">{currency(item.price)}</span><button type="button" onClick={() => void commerce.addToCart(item)} className="text-[#7B61FF] text-[10px]">Add</button></label>)}
-          <p className="text-foreground text-xs">Selected total: {currency(products.filter((item) => eventIds.includes(item.id)).reduce((sum, item) => sum + item.price, 0))}</p><button disabled={busy || !eventIds.length} onClick={() => void saveEvent()} className="w-full bg-[#7B61FF] text-white py-3 rounded-xl text-xs font-bold">Save event list</button>
+          <p className="text-foreground text-xs">Selected total: {currency(products.filter((item) => eventIds.includes(item.id)).reduce((sum, item) => sum + item.price, 0))}</p><div className="flex gap-2"><button disabled={busy || !eventIds.length} onClick={() => void saveEvent()} className="flex-1 bg-[#7B61FF] text-white py-3 rounded-xl text-xs font-bold">Save event list</button><button onClick={() => void Promise.all(products.filter((item) => eventIds.includes(item.id)).map((item) => commerce.addToCart(item)))} disabled={!eventIds.length} className="flex-1 bg-secondary border border-border text-foreground py-3 rounded-xl text-xs font-bold">Add selected to cart</button></div>
           {(eventLists ?? []).map((item: any) => <div key={item._id} className="bg-card border border-border rounded-xl p-3"><b className="text-foreground text-xs">{item.event}</b><p className="text-muted-foreground text-[10px]">Budget {currency(item.budget)} · {item.products.length} saved items</p></div>)}
         </div>;
 
       case "wardrobe":
         return <div className="space-y-3"><div className="bg-card border border-border rounded-2xl p-4 space-y-3"><h3 className="text-foreground text-sm font-semibold">Upload a clothing photo</h3><input value={wardrobeLabel} onChange={(e) => setWardrobeLabel(e.target.value)} placeholder="Item name (optional)" className="w-full bg-secondary rounded-xl p-3 text-foreground text-sm"/><select value={wardrobeCategory} onChange={(e) => setWardrobeCategory(e.target.value)} className="w-full bg-secondary rounded-xl p-3 text-foreground text-sm">{["Tops", "Bottoms", "Outerwear", "Shoes", "Accessories", "Dresses"].map((item) => <option key={item}>{item}</option>)}</select><label className="block bg-[#7B61FF] text-white text-center py-3 rounded-xl text-xs font-bold">{busy ? "Uploading…" : "Choose photo"}<input type="file" accept="image/*" className="hidden" disabled={busy} onChange={(e) => void uploadWardrobe(e.target.files?.[0])}/></label></div>
           {(wardrobe ?? []).map((item: any) => <div key={item._id} className="bg-card border border-border rounded-xl p-3 flex items-center gap-3"><img src={item.imageUrl ?? ""} alt={item.label} className="w-16 h-16 object-cover rounded-xl"/><div className="flex-1"><b className="text-foreground text-xs">{item.label}</b><p className="text-muted-foreground text-[10px]">{item.category}</p></div><button onClick={() => token && void run(() => deleteWardrobeItem({ sessionToken: token, itemId: item._id }), "Wardrobe item deleted.")} className="text-red-400 text-xs">Delete</button></div>)}
+          {wardrobe?.length ? <div className="space-y-2 pt-2"><h3 className="text-foreground text-sm font-semibold">Complementary catalog picks</h3><p className="text-muted-foreground text-[10px]">Matches use the categories you entered when saving each photo; the images are not automatically identified by computer vision.</p>{wardrobeSuggestions.map((item) => <div key={item.id} className="bg-card border border-border rounded-xl p-2 flex items-center gap-3"><img src={item.img} alt={item.name} className="w-11 h-11 rounded-lg object-cover"/><span className="text-foreground text-xs flex-1">{item.name}</span><button onClick={() => void commerce.addToCart(item)} className="text-[#7B61FF] text-[10px]">Add to cart</button></div>)}</div> : null}
         </div>;
 
       case "assistant":
         return <div className="flex flex-col min-h-[65vh]"><div className="flex-1 space-y-3">
           {messages.map((message: any, index: number) => <div key={index} className={(message.role === "user" ? "ml-8 bg-[#7B61FF] text-white" : "mr-6 bg-card border border-border text-foreground") + " p-3 rounded-2xl"}><p className="text-xs">{message.text}</p>
-            {message.productIds?.length ? <div className="mt-2 space-y-2">{message.productIds.map((id: number) => products.find((item) => item.id === id)).filter(Boolean).map((item: Product) => <div key={item.id} className="flex gap-2 items-center"><img src={item.img} alt={item.name} className="w-9 h-9 rounded-lg object-cover"/><span className="text-xs flex-1">{item.name} · {currency(item.price)}</span><button onClick={() => void commerce.addToCart(item)} className="text-[#7B61FF] text-[10px]">Add</button></div>)}</div> : null}
+            {message.productIds?.length ? <div className="mt-2 space-y-2">{message.productIds.map((id: number) => products.find((item) => item.id === id)).filter(Boolean).map((item: Product) => <div key={item.id} className="flex gap-2 items-center"><img src={item.img} alt={item.name} className="w-9 h-9 rounded-lg object-cover"/><span className="text-xs flex-1">{item.name} · {currency(item.price)}</span><button onClick={() => void commerce.addToCart(item)} className="text-[#7B61FF] text-[10px]">Add</button></div>)}<button onClick={() => void Promise.all(message.productIds.map((id: number) => products.find((item) => item.id === id)).filter(Boolean).map((item: Product) => commerce.addToCart(item)))} className="w-full bg-[#7B61FF] text-white rounded-xl py-2.5 text-[10px] font-bold">Add all suggested items to cart</button></div> : null}
           </div>)}
           {!messages.length && <p className="text-muted-foreground text-xs">Describe an event, style or budget. Recommendations are based on the current catalog and transparent rules.</p>}
         </div><div className="sticky bottom-0 bg-background border-t border-border pt-3 flex gap-2"><input value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void sendChat(chatInput); }} placeholder="Example: office outfit under ₹3000" className="flex-1 min-w-0 bg-secondary rounded-xl px-3 py-3 text-foreground text-xs"/><button disabled={busy || !chatInput.trim()} onClick={() => void sendChat(chatInput)} className="bg-[#7B61FF] text-white px-4 rounded-xl text-xs">Send</button></div></div>;
